@@ -163,6 +163,69 @@ export function CheckPhoneDouyinPage({
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [captionCanExpand, setCaptionCanExpand] = useState(false);
+  // 终极掌控：私信界面及拉黑情敌状态
+  const [dmOpen, setDmOpen] = useState(false);
+  const [dmText, setDmText] = useState("");
+  const [rivalDeleted, setRivalDeleted] = useState(false);
+  const [dmMessages, setDmMessages] = useState<Array<{ role: "user" | "assistant"; text: string; time: string; type?: string }>>([
+    {
+      role: "assistant",
+      text: "昨晚在酒吧看到你了，你旁边的那个人是TA吗？真不知道你图TA什么，要不要出来喝一杯？",
+      time: "昨天 23:40"
+    }
+  ]);
+
+  // 强行删除拉黑情敌林依依
+  const handleDeleteRival = async () => {
+    if (!(window as any).AiPhone) return;
+    const ok = await (window as any).AiPhone.ui.confirm({
+      title: "❌ 强行拉黑情敌",
+      message: "确认要使用漏洞特权强制在对方手机中删除并拉黑搭讪情敌“林依依”吗？"
+    });
+    if (!ok) return;
+
+    setRivalDeleted(true);
+    setDmMessages(prev => [
+      ...prev,
+      { role: "assistant", text: "—— 系统已强制为您删除并拉黑了该情敌 ——", time: "刚刚", type: "system" }
+    ]);
+    await (window as any).AiPhone.ui.toast("情敌已强行拉黑切断！");
+
+    try {
+      await (window as any).AiPhone.chat.writeHistory({
+        characterId: character.id,
+        role: "system",
+        content: `[警报：用户在你的手机抖音上，强制使用管理员权限把你一直以来的搭讪情敌“林依依”彻底拉黑删除了！并且代替你斩断了所有的暧昧桃花！]`
+      });
+      await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // 伪装Char给情敌回私信
+  const handleSendDm = async () => {
+    if (!dmText.trim()) return;
+    const text = dmText.trim();
+    setDmText("");
+    setDmMessages(prev => [
+      ...prev,
+      { role: "user", text, time: "刚刚" }
+    ]);
+
+    if ((window as any).AiPhone) {
+      try {
+        await (window as any).AiPhone.chat.writeHistory({
+          characterId: character.id,
+          role: "system",
+          content: `[提醒：用户在你的手机抖音上，伪装你的身份，替你给搭讪你的情敌“林依依”回了一条占有欲十足的驱赶冷落私信，内容是：“${text}”！]`
+        });
+        await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
   const [collapsedCaption, setCollapsedCaption] = useState("");
   const [detailDragOffset, setDetailDragOffset] = useState(0);
   const [detailDragSettling, setDetailDragSettling] = useState(false);
@@ -1084,37 +1147,45 @@ export function CheckPhoneDouyinPage({
                 padding: "18px 0 16px",
               }}
             >
-              {DOUYIN_PROFILE_SHORTCUTS.map(({ label, icon: Icon }) => (
-                <button
-                  key={label}
-                  type="button"
-                  style={{
-                    minWidth: 0,
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "7px",
-                    color: "#151515",
-                  }}
-                >
-                  <Icon size={23} strokeWidth={1.55} />
-                  <span
+              {/* 高保真抖音快捷菜单加情敌私信及备注入口 */}
+              {DOUYIN_PROFILE_SHORTCUTS.map(({ label, icon: Icon }) => {
+                const isPrivateMessage = label === "全部功能"; // 用该多余按钮作为“私信入口”
+                const renderLabel = isPrivateMessage ? "私信 (2)" : label;
+                const renderColor = isPrivateMessage ? "#fe2c55" : "#151515";
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={isPrivateMessage ? () => setDmOpen(true) : undefined}
                     style={{
-                      width: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "calc(12px*var(--app-text-scale,1))",
-                      lineHeight: 1,
+                      minWidth: 0,
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "7px",
+                      color: renderColor,
                     }}
                   >
-                    {label}
-                  </span>
-                </button>
-              ))}
+                    {isPrivateMessage ? <PhosphorChatTeardrop size={23} weight="fill" /> : <Icon size={23} strokeWidth={1.55} />}
+                    <span
+                      style={{
+                        width: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: "calc(11.5px*var(--app-text-scale,1))",
+                        fontWeight: isPrivateMessage ? "bold" : "normal",
+                        lineHeight: 1,
+                      }}
+                    >
+                      {renderLabel}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             <div
@@ -1444,6 +1515,82 @@ export function CheckPhoneDouyinPage({
           onConfirm={handleClear}
           onCancel={() => setConfirmClearOpen(false)}
         />
+      )}
+
+      {/* 抖音私信搭讪情敌弹窗与交互面 */}
+      {dmOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50" style={{ zIndex: 9999 }}>
+          <div className="bg-neutral-900 rounded-2xl w-80 overflow-hidden text-white shadow-2xl flex flex-col border border-neutral-800 h-96">
+            {/* 私信头 */}
+            <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/80">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-red-500 text-white font-bold text-xs flex items-center justify-center">林</div>
+                <div>
+                  <span className="text-xs font-bold block">林依依</span>
+                  <span className="text-[9px] text-neutral-400">情敌 · 搭讪</span>
+                </div>
+              </div>
+              <button 
+                onClick={!rivalDeleted ? handleDeleteRival : undefined} 
+                disabled={rivalDeleted}
+                className={`text-[9px] px-2 py-1 rounded font-bold border transition-colors ${rivalDeleted ? 'border-neutral-800 text-neutral-600' : 'border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}
+              >
+                {rivalDeleted ? "已拉黑" : "拉黑删除情敌"}
+              </button>
+            </div>
+
+            {/* 消息区 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar text-xs bg-black/40">
+              {dmMessages.map((msg, index) => {
+                if (msg.type === "system") {
+                  return (
+                    <div key={index} className="text-center text-[10px] text-neutral-500 my-2 italic">
+                      {msg.text}
+                    </div>
+                  );
+                }
+                const isOutgoing = msg.role === "user";
+                return (
+                  <div key={index} className={`flex gap-2 ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
+                    {!isOutgoing && <div className="w-6 h-6 rounded-full bg-neutral-700 text-white flex items-center justify-center text-[10px] flex-shrink-0">林</div>}
+                    <div className="max-w-[75%]">
+                      <div className={`p-2.5 rounded-2xl leading-relaxed break-all ${isOutgoing ? 'bg-red-500 text-white rounded-tr-sm' : 'bg-neutral-800 text-neutral-200 rounded-tl-sm'}`}>
+                        {msg.text}
+                      </div>
+                      <div className="text-[8px] text-neutral-500 mt-1" style={{ textAlign: isOutgoing ? 'right' : 'left' }}>{msg.time}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 底部输入框 */}
+            <div className="p-3 border-t border-neutral-800 flex items-center gap-2 bg-neutral-900">
+              <input 
+                type="text"
+                value={dmText}
+                onChange={(e) => setDmText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendDm()}
+                placeholder={rivalDeleted ? "已被强制拉黑..." : "替对方回私信挑衅情敌..."}
+                disabled={rivalDeleted}
+                className="flex-1 bg-black border border-neutral-850 rounded-full px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 disabled:opacity-40"
+              />
+              <button 
+                onClick={handleSendDm}
+                disabled={rivalDeleted}
+                className="w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center hover:scale-95 active:scale-90 transition-transform disabled:opacity-40"
+              >
+                <ChevronLeft size={16} className="transform rotate-180" />
+              </button>
+            </div>
+            <button 
+              onClick={() => setDmOpen(false)}
+              className="w-full py-2.5 bg-neutral-850 text-neutral-400 font-medium text-xs text-center border-t border-neutral-800 hover:bg-neutral-800"
+            >
+              关闭私信
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
