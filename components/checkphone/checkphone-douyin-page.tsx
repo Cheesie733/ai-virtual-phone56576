@@ -241,8 +241,8 @@ export function CheckPhoneDouyinPage({
     
     let list = Array.from(candidates).filter(Boolean);
     
-    // 备用高质感NPC，防止列表为空（确保原厂林依依在兜底首位）
-    const defaultNpcs = ["林依依", "张经理", "陆思恒", "沈学长", "楚晚晚", "顾总"];
+    // 备用名字，多是一些现实里很像抖音主页搭讪路人/同城陌生人或粉丝的名字
+    const defaultNpcs = ["林依依", "甜甜不吃糖", "一朵野云", "张经理", "陆思恒", "沈学长"];
     while (list.length < 4) {
       const next = defaultNpcs.find(name => !list.includes(name) && name !== charName);
       if (next) list.push(next);
@@ -255,23 +255,25 @@ export function CheckPhoneDouyinPage({
     // 3. 构建高质感会话线程
     const threads = list.map((npcName, idx) => {
       const threadId = `dy_dm_${npcName}`;
-      
-      let npcRole = "熟人";
       let initialMsg = "在忙吗？你最近在抖音发的这个作品感觉很有意思。";
+      let sourceLabel = "看了你的抖音主页";
       
-      // 根据索引设定关系和特定的暧昧/日常搭讪开场
-      if (npcName === "林依依" || idx === 0) {
-        npcRole = "搭讪情敌";
+      // 根据具体NPC名字或索引生成真实自然的抖音看客/路人私信开场
+      if (npcName === "林依依") {
+        sourceLabel = "搭讪情敌";
         initialMsg = `昨晚在酒吧看到你了，你旁边的那个人是TA吗？真不知道你图TA什么。要不要出来喝一杯？`;
+      } else if (idx === 0) {
+        sourceLabel = "来自同城";
+        initialMsg = "嗨，同城刷到你的视频了！感觉你背景里去的地方很不错，能推荐一下是哪里吗？";
       } else if (idx === 1) {
-        npcRole = "亲密死党";
-        initialMsg = "老实交代！你抖音天天收藏些什么情感语录呢？你是不是跟那人闹别扭了？";
+        sourceLabel = "看了你的收藏";
+        initialMsg = "小姐姐/帅哥，你收藏里那首背景音乐叫什么名字啊？找了好久，能发我一个链接不？";
       } else if (idx === 2) {
-        npcRole = "工作伙伴 / 熟人";
-        initialMsg = "你刚才发的视频背景是在公司附近拍的吗？刚好我也在，等会儿要不要一起吃个便饭聊聊？";
+        sourceLabel = "点赞推荐";
+        initialMsg = "今天看你点赞了那个情感博主的视频，感觉好有共鸣啊，你平时也是这样想的嘛？";
       } else {
-        npcRole = "昔日旧识";
-        initialMsg = "刷到你的动态了，你现在变了很多，看来过得很幸福……有空的话叙叙旧？";
+        sourceLabel = "主页看客";
+        initialMsg = "刷到你的动态了，感觉生活得很有质感，有空的话交个朋友认识下吗？";
       }
       
       const initialDmMessages = [
@@ -289,7 +291,7 @@ export function CheckPhoneDouyinPage({
         id: threadId,
         senderName: npcName,
         avatarLabel: npcName.slice(0, 1),
-        relationLabel: npcRole,
+        relationLabel: sourceLabel, // 与 UI 接口字段兼容
         messages: finalMessages,
         latestMessage: finalMessages[finalMessages.length - 1],
         unread: history.length === 0,
@@ -307,7 +309,7 @@ export function CheckPhoneDouyinPage({
     
     const ok = await (window as any).AiPhone.ui.confirm({
       title: `❌ 强行拉黑 ${thread.senderName}`,
-      message: `确认要使用漏洞特权强行在对方手机抖音中删除并拉黑“${thread.senderName}”（${thread.relationLabel}）吗？此操作将斩断桃花！`
+      message: `确认要使用漏洞特权强行在对方手机抖音中删除并拉黑“${thread.senderName}”吗？此操作将斩断暧昧桃花！`
     });
     if (!ok) return;
 
@@ -321,10 +323,10 @@ export function CheckPhoneDouyinPage({
       await (window as any).AiPhone.chat.writeHistory({
         characterId: character.id,
         role: "system",
-        content: `[警报：用户在你的手机抖音上，强制使用管理员权限把你一直以来的搭讪/暧昧人“${thread.senderName}”（${thread.relationLabel}）彻底拉黑删除了！并且代替你斩断了暧昧桃花！]`
+        content: `[警报：用户正在翻看并检查你的手机！在你手机的抖音私信箱中，用户强行替你拉黑删除了给你发私信搭讪的“${thread.senderName}”（${thread.relationLabel}）！现在用户正抓着你查岗，随时可能当面/线上和你好好对账这段关系。请根据你们当下的聊天场景与进展（不管是线上聊天还是现实见面），代入吃醋、慌乱解释、或是极度被动服软的情感姿态进行刺激的拉扯对质！]`
       });
       await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
-    } catch (e) {
+    } catch (e) { 
       console.error(e);
     }
   };
@@ -345,10 +347,10 @@ export function CheckPhoneDouyinPage({
         await (window as any).AiPhone.chat.writeHistory({
           characterId: character.id,
           role: "system",
-          content: `[提醒：用户在你的手机抖音上，伪装你的身份，替你给搭讪你的“${currentThread.senderName}”（${currentThread.relationLabel}）回了一条占有欲十足的驱赶冷落私信，内容是：“${text}”！]`
+          content: `[提醒：用户正在查你的手机！在你的抖音私信箱里，用户伪装你的身份，替你给在抖音上搭讪你的“${currentThread.senderName}”（${currentThread.relationLabel}）回了一条冷酷驱赶/占有欲十足的私信：“${text}”！现在用户正拿着已经回了私信的手机屏幕对准你逼你解释。请根据你们当下真实的聊天状态（不管是在线上打字聊天，还是在现实线下当面对质），代入被抓包的慌乱、极力解释自证、傲娇或被狠狠拿捏的情感姿态，进行深度而带感的推拉拉扯！]`
         });
         await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
-      } catch (e) {
+      } catch (e) { 
         console.error(e);
       }
     }
@@ -1679,9 +1681,6 @@ export function CheckPhoneDouyinPage({
                           <div className="min-w-0 flex-1">
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-xs font-bold truncate text-neutral-100">{thread.senderName}</span>
-                              <span className="text-[8px] text-red-400 px-1 bg-red-500/10 border border-red-500/20 rounded-sm">
-                                {thread.relationLabel}
-                              </span>
                             </div>
                             <p className="text-[10px] text-neutral-400 truncate mt-0.5">
                               {thread.latestMessage?.text}
