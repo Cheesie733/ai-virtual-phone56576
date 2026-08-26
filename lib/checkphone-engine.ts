@@ -8089,3 +8089,64 @@ export async function generateCheckPhoneReading(
     return { payload: null, summary: "", error: message, debugRawOutput: "", debugParseMode: "failed", debugParseError: message };
   }
 }
+
+export async function generateCheckPhoneNpcReply(
+  characterId: string,
+  npcName: string,
+  conversationHistory: Array<{ role: "incoming" | "outgoing"; text: string }>,
+  latestUserText: string,
+): Promise<{ replyText: string; error?: string }> {
+  const { apiConfig, preset, worldBooks, regexes } = resolveCheckPhoneConfigs(characterId);
+  if (!apiConfig) return { replyText: "……", error: "未找到可用的 API 配置" };
+
+  try {
+    const character = loadCharacters().find((item) => item.id === characterId);
+    const charName = character?.name || "对方";
+
+    const historyText = conversationHistory
+      .map((item) => {
+        const sender = item.role === "outgoing" ? charName : npcName;
+        return `${sender}: ${item.text}`;
+      })
+      .join("\n");
+
+    const promptMessages: LLMMessage[] = [
+      {
+        role: "system",
+        content: `你现在需要扮演角色“${charName}”的微信好友“${npcName}”。
+“${charName}”的人设简介为：
+"""
+${character?.persona || "未知人设"}
+"""
+
+现在，“${charName}”的伴侣/攻略对象（用户）正在偷查“${charName}”的手机，并且伪装成“${charName}”的口吻，在微信上代替“${charName}”给你发送了一条消息。
+用户（假装成 ${charName}）刚刚发送了：
+"${latestUserText}"
+
+以下是你们之前的微信聊天简要历史记录：
+${historyText || "（暂无历史记录）"}
+
+请你根据“${npcName}”作为 ${charName} 的好友身份、之前的谈话语境、以及“${latestUserText}”的内容，进行极其真实、生动、且带有推拉或敏锐吐槽、疑惑的秒回。
+回复规范：
+1. 你的回复必须简短，符合社交软件微信聊天的习惯（通常在 10 ~ 40 字内，不要大段论述，可以带一些语气词和常见小表情，比如 ？？、笑死、[呲牙]、[白眼]）。
+2. 根据你们的关系（例如阿杰是死党，雪儿是暧昧的前女友/红颜知己，或者其他名字对应的普通社交好友），如果发现“${charName}”今天说话的语气极度反常，你可以表现出敏感、疑惑、开玩笑、调侃或怀疑。
+3. 只返回对话内容本身，绝对不要带有任何 JSON 格式或“${npcName}: ”这类的名字前缀。直接输出你的聊天文字内容！`
+      }
+    ];
+
+    const rawOutput = await sendLLMRequest(
+      apiConfig,
+      preset,
+      promptMessages,
+      regexes,
+      { characterName: `${npcName} (微信好友)` },
+      { skipOutputRegex: true, appId: `checkphone_npc_reply` }
+    );
+
+    const replyText = rawOutput?.trim().replace(/^['"“]+|['"”]+$/g, "") || "……？你今天怎么怪怪的？";
+    return { replyText };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "NPC 思考失败";
+    return { replyText: "……？你今天怎么怪怪的？", error: message };
+  }
+}

@@ -45,6 +45,7 @@ import {
 } from "@/lib/checkphone-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
 import { resolveUserIdentity } from "@/lib/settings-storage";
+import { generateCheckPhoneNpcReply } from "@/lib/checkphone-engine";
 
 type CheckPhoneChatPageProps = {
   character: Character;
@@ -753,30 +754,41 @@ export function CheckPhoneChatPage({
           ...nextPayload.conversations.filter(c => c.id !== selectedConversationId)
         ];
         
-        // 模拟 NPC 在 1.5 秒后回复
+        // AI 驱动的好友真实推拉秒回逻辑
         setTimeout(async () => {
+          const npcName = conversationName || "微信好友";
+          const history = conv.messages.map(m => ({
+            role: m.direction,
+            text: m.text
+          }));
+
           let reply = "……？你今天怎么怪怪的？";
-          if (selectedConversationId.includes("ajie")) {
-            const ajieReplies = [
-              "卧槽，你今天怎么这副腔调？是不是找我借钱？",
-              "今晚雪儿聚会也会去，老地方见，你可别怂。",
-              "天天和楼主暧昧拉扯，别怪哥们没提醒你迟早玩脱。",
-            ];
-            reply = ajieReplies[Math.floor(Math.random() * ajieReplies.length)];
-          } else if (selectedConversationId.includes("xueer")) {
-            const xueerReplies = [
-              "你总是这样忽冷忽热，我回国了，今晚老地方，我等你。",
-              "别拿普通朋友搪塞我。上周深夜你分享的那首歌明明是我们以前常听的。",
-              "今晚八点，老地方，你知道我脾气的。",
-            ];
-            reply = xueerReplies[Math.floor(Math.random() * xueerReplies.length)];
+          try {
+            const res = await generateCheckPhoneNpcReply(
+              character.id,
+              npcName,
+              history,
+              text
+            );
+            if (res.replyText) {
+              reply = res.replyText;
+            }
+          } catch (err) {
+            console.error("AI微信好友回复失败，使用模板兜底", err);
+            if (selectedConversationId.includes("ajie")) {
+              reply = "卧槽，你今天怎么这副腔调？发错人了吧？";
+            } else if (selectedConversationId.includes("xueer")) {
+              reply = "你总是这样忽冷忽热，是不是你旁边那位正看着呢？";
+            }
           }
+
           const replyMsg: CheckPhoneChatBubble = {
             id: `reply_${Date.now()}`,
             text: reply,
             timeLabel: "刚刚",
             direction: "incoming",
           };
+
           const latestPayload = { ...nextPayload };
           const latestConvIdx = latestPayload.conversations.findIndex(c => c.id === selectedConversationId);
           if (latestConvIdx !== -1) {
@@ -794,9 +806,25 @@ export function CheckPhoneChatPage({
             const newSnapshot = { ...snapshot, payload: latestPayload, updatedAt: new Date().toISOString() };
             await savePhoneSnapshot(newSnapshot);
             setSnapshot(newSnapshot);
-            if (window.AiPhone) await AiPhone.ui.toast("收到微信新消息");
+            if (window.AiPhone) await window.AiPhone.ui.toast(`收到微信新消息：${npcName}`);
           }
         }, 1500);
+
+        // 终极掌控：我（User）一替 Char 发微信，Char 的后台引擎就会立刻通过某种线索察觉！
+        // 并且会根据「我」和「TA的好友（如阿杰/雪儿）」刚才的具体对话内容，在聊天室里主动找我挑明或疯狂吃醋、对质！
+        if (window.AiPhone) {
+          const npcName = conversationName || "微信好友";
+          try {
+            await window.AiPhone.chat.writeHistory({
+              characterId: character.id,
+              role: "system",
+              content: `[警报：用户此时正在偷查你的微信，并伪装成你的身份跟你的好友“${npcName}”发微信对话！刚才用户以你的名义发了：“${text}”！而好友“${npcName}”对此进行了回复。这件事情被你的微信后台/系统通知所暴露，你已经察觉到了伴侣（用户）正在替你发微信的异常事实！请你立刻根据微信里的聊天记录，在主聊天室中主动发难质问用户，代入极度吃醋、慌张掩盖暧昧或者被抓包后破罐子破摔跟伴侣拉扯、推拉、狡辩的姿态，疯狂发消息找用户对账！]`
+            });
+            await window.AiPhone.chat.requestReply({ characterId: character.id });
+          } catch (e) {
+            console.error("微信后台察觉触发失败", e);
+          }
+        }
       }
     } else if (type === "group" && selectedGroupId) {
       const groupIdx = nextPayload.groups.findIndex(g => g.id === selectedGroupId);
@@ -820,22 +848,46 @@ export function CheckPhoneChatPage({
           ...nextPayload.groups.filter(g => g.id !== selectedGroupId)
         ];
         
+        // AI 驱动的群聊内好友真实推拉秒回
         setTimeout(async () => {
-          const reply = "阿杰：噗，楼主今晚要加班，某位大忙人今晚空得很！";
+          // 找出群里上一个说话的 NPC 名字作为回复人，或者用默认群友
+          const lastNpcMsg = grp.messages.findLast(m => m.direction === "incoming");
+          const npcName = lastNpcMsg?.authorLabel || "死党阿杰";
+          const history = grp.messages.map(m => ({
+            role: m.direction,
+            text: `${m.authorLabel || (m.direction === 'outgoing' ? 'Char' : '群友')}: ${m.text}`
+          }));
+
+          let reply = "噗，楼主今晚要加班，某位大忙人今晚空得很！";
+          try {
+            const res = await generateCheckPhoneNpcReply(
+              character.id,
+              `${npcName} (在群聊“${grp.name}”中)`,
+              history,
+              text
+            );
+            if (res.replyText) {
+              reply = res.replyText;
+            }
+          } catch (err) {
+            console.error("AI微信群好友回复失败", err);
+          }
+
           const replyMsg: CheckPhoneChatBubble = {
             id: `reply_${Date.now()}`,
             text: reply,
             timeLabel: "刚刚",
             direction: "incoming",
-            authorLabel: "死党阿杰",
+            authorLabel: npcName,
           };
+
           const latestPayload = { ...nextPayload };
           const latestGrpIdx = latestPayload.groups.findIndex(g => g.id === selectedGroupId);
           if (latestGrpIdx !== -1) {
             const latestGrp = latestPayload.groups[latestGrpIdx];
             const withReply = {
               ...latestGrp,
-              preview: reply,
+              preview: `${npcName}: ${reply}`,
               timeLabel: "刚刚",
               messages: [...latestGrp.messages, replyMsg],
             };
@@ -846,9 +898,24 @@ export function CheckPhoneChatPage({
             const newSnapshot = { ...snapshot, payload: latestPayload, updatedAt: new Date().toISOString() };
             await savePhoneSnapshot(newSnapshot);
             setSnapshot(newSnapshot);
-            if (window.AiPhone) await AiPhone.ui.toast("收到微信群新消息");
+            if (window.AiPhone) await window.AiPhone.ui.toast(`收到群聊“${grp.name}”新消息`);
           }
         }, 1500);
+
+        // 终极掌控：我一在群里以 Char 身份发言，Char 的微信后台通知就会暴露此事！
+        // Char 会立刻察觉并根据「我」和「TA的好友们」在群聊里的公开交谈，在主聊天室主动找我吃醋、发难对账！
+        if (window.AiPhone) {
+          try {
+            await window.AiPhone.chat.writeHistory({
+              characterId: character.id,
+              role: "system",
+              content: `[警报：用户正在翻看你的手机微信，并在你置身其中的微信群聊“${grp.name}”中，伪装你的身份替你给群里公开群发了一条消息：“${text}”！此事已被你的后台微信系统通知弹出提醒，你已经完全知道伴侣（用户）背着你在大庭广众的群聊里以你的口吻发了这句话！请你立刻在主聊天室中主动发难质问用户，代入极其醋意大发、慌张找借口辩解或者被当众抓包后的复杂拉扯姿态，主动找用户对账！]`
+            });
+            await window.AiPhone.chat.requestReply({ characterId: character.id });
+          } catch (e) {
+            console.error("微信群后台察觉触发失败", e);
+          }
+        }
       }
     }
 
