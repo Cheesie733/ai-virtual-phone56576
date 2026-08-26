@@ -46,6 +46,7 @@ import {
 import { splitBilingualText } from "@/lib/bilingual-text";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import { generateCheckPhoneNpcReply } from "@/lib/checkphone-engine";
+import { pushChatMessage, loadChatSessions } from "@/lib/chat-storage";
 
 type CheckPhoneChatPageProps = {
   character: Character;
@@ -737,6 +738,7 @@ export function CheckPhoneChatPage({
       const convIdx = nextPayload.conversations.findIndex(c => c.id === selectedConversationId);
       if (convIdx !== -1) {
         const conv = nextPayload.conversations[convIdx];
+        const npcName = getConversationDisplayName(conv) || "微信好友";
         const newMsg: CheckPhoneChatBubble = {
           id: `fake_${Date.now()}`,
           text,
@@ -754,9 +756,8 @@ export function CheckPhoneChatPage({
           ...nextPayload.conversations.filter(c => c.id !== selectedConversationId)
         ];
         
-        // AI 驱动的好友真实推拉秒回逻辑
+        // 1. AI 驱动的好友真实推拉异步秒回
         setTimeout(async () => {
-          const npcName = conversationName || "微信好友";
           const history = conv.messages.map(m => ({
             role: m.direction,
             text: m.text
@@ -806,29 +807,33 @@ export function CheckPhoneChatPage({
             const newSnapshot = { ...snapshot, payload: latestPayload, updatedAt: new Date().toISOString() };
             await savePhoneSnapshot(newSnapshot);
             setSnapshot(newSnapshot);
-            if (window.AiPhone) await window.AiPhone.ui.toast(`收到微信新消息：${npcName}`);
+            if ((window as any).AiPhone) (window as any).AiPhone.ui.toast(`收到微信新消息：${npcName}`);
+          }
+          
+          // 2. 核心大本营记忆与感知同步：原生触发，不依赖 window.AiPhone 桥梁
+          const sessions = loadChatSessions();
+          const directSession = sessions.find(s => !s.isGroup && s.contactId === character.id);
+          if (directSession) {
+            try {
+              // 永久性写入宿主 IndexedDB 聊天历史卷宗记忆，作为今后吃醋、翻旧账的铁证
+              pushChatMessage({
+                sessionId: directSession.id,
+                role: "system",
+                content: `[微信线索记忆同步：用户刚刚偷看了你的手机，伪装你的身份给你的微信好友“${npcName}”发送了：“${text}”。随后，对方对你回复了：“${reply}”。该聊天内容已作为真实的物理线索被你的微信系统后台感知、记录，并沉淀入你和NPC的长远记忆库（这部分发言今后可作为你或好友调侃、质问、吃醋翻旧账的铁证！）。现在请你结合这个被暴露的新鲜事件、你们当下的关系，在聊天室做出最真实的推拉：
+1. 如果用户刚才发的内容是在“吃醋”、帮你驱离暧昧，你可以觉得暗爽、好笑，主动向伴侣撒娇调侃；
+2. 如果用户发送的内容跟亲人（如妈妈、爸爸等）进行了反常交谈，你可以抱怨伴侣瞎回你家里人的消息；
+3. 如果用户发了极其反常甚至捣乱的话，请感到被抓包的无奈，傲娇狡辩、解释、或慌张反质问。
+请结合刚才用户发送的“${text}”以及你们当下的感情进展，在主聊天室（不管线上线上，还是线下剧情）发起最自然带感的交谈！]`,
+              });
+
+              // 触发大本营回复刷新
+              window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: directSession.id } }));
+              window.dispatchEvent(new CustomEvent("chat-request-reply", { detail: { sessionId: directSession.id } }));
+            } catch (e) {
+              console.error("写入 IndexedDB 主聊天记录或派发回复事件失败", e);
+            }
           }
         }, 1500);
-
-        // 后台感知：我一替 Char 发微信，Char 的后台就会收到后台推送或线索察觉。
-        // 并不一定非要生气或发难，AI 会根据「我发了什么内容」、跟好友交谈的恶劣程度、以及双方的亲密进展来合理做出反应！
-        if (window.AiPhone) {
-          const npcName = conversationName || "微信好友";
-          try {
-            await window.AiPhone.chat.writeHistory({
-              characterId: character.id,
-              role: "system",
-              content: `[后台线索感知：用户刚刚偷看了你的手机，伪装你的身份给微信好友“${npcName}”发了：“${text}”。这件事情被你察觉到了。请根据你跟用户（伴侣）当下的感情进展、你和该好友的聊天关系以及刚才发的内容做出最真实的反馈：
-1. 如果用户刚才发送的内容是在“吃醋”、帮你驱离暧昧、或者是霸气宣誓主权，你可能非但不生气，反而会觉得好笑、心里暗爽、甚至是极具情趣地去调侃、顺从、向伴侣撒娇邀宠；
-2. 如果用户发送的内容语气非常反常，引起了好友怀疑并来向你拆穿，或者暴露了你的小心思，你可以感到慌乱、傲娇嘴硬解释、极力狡辩或被抓包的无奈；
-3. 如果用户发了极其恶劣或可能搞砸你友情/合作的捣乱话，你才会产生生气、质问、反向质问或推拉对账。
-请综合判断刚才用户发的那句：“${text}”，在主聊天室（线上或线下当面）找用户交谈！代入符合你们当下关系进展和剧情现状的真实拉扯反应。]`
-            });
-            await window.AiPhone.chat.requestReply({ characterId: character.id });
-          } catch (e) {
-            console.error("微信后台察觉触发失败", e);
-          }
-        }
       }
     } else if (type === "group" && selectedGroupId) {
       const groupIdx = nextPayload.groups.findIndex(g => g.id === selectedGroupId);
@@ -852,46 +857,84 @@ export function CheckPhoneChatPage({
           ...nextPayload.groups.filter(g => g.id !== selectedGroupId)
         ];
         
-        // AI 驱动的群聊内好友真实推拉秒回
+        // 1. AI 驱动的群聊内好友“多人异步多轮热闹秒回狂欢”（高质感活人感！）
+        const lastNpcMsg = grp.messages.findLast(m => m.direction === "incoming");
+        const npcName1 = lastNpcMsg?.authorLabel || "死党阿杰";
+        
+        // 动态提取并轮询该群中其他活跃成员
+        const otherGroupMembers = grp.messages
+          .map(m => m.authorLabel)
+          .filter((name): name is string => typeof name === "string" && name !== "Char" && name !== npcName1);
+        const npcName2 = otherGroupMembers[0] || "雪儿";
+        const npcName3 = otherGroupMembers[1] || "大忙人";
+
+        const history = grp.messages.map(m => ({
+          role: m.direction,
+          text: `${m.authorLabel || (m.direction === 'outgoing' ? 'Char' : '群友')}: ${m.text}`
+        }));
+
+        // 第一轮回复：群成员1在 1.5 秒后调侃吐槽
         setTimeout(async () => {
-          // 找出群里上一个说话的 NPC 名字作为回复人，或者用默认群友
-          const lastNpcMsg = grp.messages.findLast(m => m.direction === "incoming");
-          const npcName = lastNpcMsg?.authorLabel || "死党阿杰";
-          const history = grp.messages.map(m => ({
-            role: m.direction,
-            text: `${m.authorLabel || (m.direction === 'outgoing' ? 'Char' : '群友')}: ${m.text}`
-          }));
-
-          let reply = "噗，楼主今晚要加班，某位大忙人今晚空得很！";
+          let reply1 = "卧槽，你怎么在群里发这玩意？楼主是不是又查你手机了[偷笑]";
           try {
-            const res = await generateCheckPhoneNpcReply(
-              character.id,
-              `${npcName} (在群聊“${grp.name}”中)`,
-              history,
-              text
-            );
-            if (res.replyText) {
-              reply = res.replyText;
-            }
-          } catch (err) {
-            console.error("AI微信群好友回复失败", err);
+            const res = await generateCheckPhoneNpcReply(character.id, `${npcName1} (在群聊“${grp.name}”中)`, history, text);
+            if (res.replyText) reply1 = res.replyText;
+          } catch (err) { console.error(err); }
+
+          const replyMsg1: CheckPhoneChatBubble = { id: `reply1_${Date.now()}`, text: reply1, timeLabel: "刚刚", direction: "incoming", authorLabel: npcName1 };
+          await updateGroupSnapshotWithReply(replyMsg1);
+        }, 1500);
+
+        // 第二轮接龙：群成员2在 3.2 秒后推波助澜起哄
+        setTimeout(async () => {
+          let reply2 = "[呲牙] 天呐，Char 居然在群里这么说，某人是不是占有欲又爆炸了？";
+          try {
+            const res = await generateCheckPhoneNpcReply(character.id, `${npcName2} (在群聊“${grp.name}”中)`, [...history, { role: "incoming", text: `${npcName1}: ${text}` }], `回应了刚才“${npcName1}”调侃“${text}”的话`);
+            if (res.replyText) reply2 = res.replyText;
+          } catch (err) { console.error(err); }
+
+          const replyMsg2: CheckPhoneChatBubble = { id: `reply2_${Date.now()}`, text: reply2, timeLabel: "刚刚", direction: "incoming", authorLabel: npcName2 };
+          await updateGroupSnapshotWithReply(replyMsg2);
+        }, 3200);
+
+        // 第三轮轰炸：群成员3在 4.8 秒后彻底沸腾沸水
+        setTimeout(async () => {
+          let reply3 = "吃瓜吃瓜！群里难得起哄，楼主等会儿要让你好好解释了[斜眼]";
+          try {
+            const res = await generateCheckPhoneNpcReply(character.id, `${npcName3} (在群聊“${grp.name}”中)`, [...history, { role: "incoming", text: `${npcName2}: [群内起哄]` }], `继续起哄并起哄调侃刚才用户发的“${text}”`);
+            if (res.replyText) reply3 = res.replyText;
+          } catch (err) { console.error(err); }
+
+          const replyMsg3: CheckPhoneChatBubble = { id: `reply3_${Date.now()}`, text: reply3, timeLabel: "刚刚", direction: "incoming", authorLabel: npcName3 };
+          await updateGroupSnapshotWithReply(replyMsg3);
+          
+          // 三轮群友狂欢连环秒回全部在快照落地后，原生写入宿主 Chat History，唤醒大本营 Char 对账，计入真正的物理历史与记忆中！
+          const sessions = loadChatSessions();
+          const directSession = sessions.find(s => !s.isGroup && s.contactId === character.id);
+          if (directSession) {
+            try {
+              pushChatMessage({
+                sessionId: directSession.id,
+                role: "system",
+                content: `[微信群线索记忆同步：用户刚刚翻看并接管了你的手机，伪装你的身份，在微信群“${grp.name}”中当众群发了：“${text}”！随后，你的群友“${npcName1}”、“${npcName2}”和“${npcName3}”等人在群里大肆围观起哄！这桩社死黑历史已被你的微信后台通知轰炸弹窗暴露。该事实已同步存入你和群友的共同长远记忆卷宗（今后这随时可作为你、用户或NPC群友吃醋、起哄、质问和调侃的铁证！）。请你结合这个已被群友疯狂起哄的社死惨案、你和伴侣（用户）当前的亲密热度做出反应：
+1. 如果用户刚才在群里发的消息是在帮你掐桃花、霸气宣示主权，你可以感到内心暗爽、极度羞涩，并在聊天室嗔怪撒娇（例如：“你刚才在群里发什么呢，大家都来私信问我了...”）；
+2. 如果内容纯粹是起哄搞怪、开玩笑，请感到被当众抓包后的无奈和囧意，傲娇地娇嗔拉扯；
+3. 如果用户发了极其恶劣砸你社交圈的话，请在聊天室生气急眼、对账质问！]`,
+              });
+              window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: directSession.id } }));
+              window.dispatchEvent(new CustomEvent("chat-request-reply", { detail: { sessionId: directSession.id } }));
+            } catch (e) { console.error(e); }
           }
+        }, 4800);
 
-          const replyMsg: CheckPhoneChatBubble = {
-            id: `reply_${Date.now()}`,
-            text: reply,
-            timeLabel: "刚刚",
-            direction: "incoming",
-            authorLabel: npcName,
-          };
-
+        const updateGroupSnapshotWithReply = async (replyMsg: CheckPhoneChatBubble) => {
           const latestPayload = { ...nextPayload };
           const latestGrpIdx = latestPayload.groups.findIndex(g => g.id === selectedGroupId);
           if (latestGrpIdx !== -1) {
             const latestGrp = latestPayload.groups[latestGrpIdx];
             const withReply = {
               ...latestGrp,
-              preview: `${npcName}: ${reply}`,
+              preview: `${replyMsg.authorLabel}: ${replyMsg.text}`,
               timeLabel: "刚刚",
               messages: [...latestGrp.messages, replyMsg],
             };
@@ -904,26 +947,7 @@ export function CheckPhoneChatPage({
             setSnapshot(newSnapshot);
             if (window.AiPhone) await window.AiPhone.ui.toast(`收到群聊“${grp.name}”新消息`);
           }
-        }, 1500);
-
-        // 后台感知：我一在群里以 Char 身份发言，Char 的微信后台通知就会收到线索察觉。
-        // AI 会根据群里聊天的内容、你们当下的亲密程度做出极度真实的反馈，绝不机械化生气：
-        if (window.AiPhone) {
-          try {
-            await window.AiPhone.chat.writeHistory({
-              characterId: character.id,
-              role: "system",
-              content: `[后台线索感知：用户正在翻看你的手机微信，并在群聊“${grp.name}”中，伪装你的身份替你发了一条群消息：“${text}”。这件事被你的系统后台通知察觉。请根据你跟用户（伴侣）当下的亲密进展、以及刚才在群里发的内容做出反应：
-1. 如果用户刚才群发的内容是在帮你掐桃花、宣布主权、或是以傲娇语气帮你拒绝别人的邀约，你可能内心暗爽、害羞，主动在聊天室找伴侣娇嗔调侃（比如：“你刚才在群里发什么呢，大家都来私信问我了...”）；
-2. 如果内容纯粹是搞怪、开玩笑，或者不小心暴露了你们的关系，你可以半推半就地和用户娇嗔拉扯；
-3. 只有当用户发送了非常胡闹、可能搞砸你群内关系或商务社交的捣乱话时，你才会在主聊天室（线上或线下）感到慌乱或生气地对账质问。
-请结合刚才用户发送的“${text}”以及你们当下的感情热度，在主聊天室发起最真实自然的交谈与拉扯！]`
-            });
-            await window.AiPhone.chat.requestReply({ characterId: character.id });
-          } catch (e) {
-            console.error("微信群后台察觉触发失败", e);
-          }
-        }
+        };
       }
     }
 

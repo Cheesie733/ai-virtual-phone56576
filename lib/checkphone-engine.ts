@@ -1109,6 +1109,55 @@ function mergeChatPayload(
   );
   const realConversationNames = new Set(realPayload.conversations.map((item) => normalizeEntityName(item.name)).filter(Boolean));
   const realGroupNames = new Set(realPayload.groups.map((item) => normalizeEntityName(item.name)).filter(Boolean));
+
+  // 动态分析世界书关系网：只保留属于当前角色且能被其认识的 NPC。防止异世界人物大乱斗（如金泰亨和田柾国称兄道弟却毫不认识）
+  const allowedNpcNamesFromWorldBooks = new Set<string>();
+  try {
+    // 解析世界书词条、角色关系等，提取合法 NPC 名
+    const binding = resolveBinding(loadBindingConfig(), characterId, "checkphone");
+    const allWorldBooks = loadWorldBooks();
+    const activeWorldBooks = (binding.worldBookIds ?? [])
+      .map((id) => allWorldBooks.find((item) => item.id === id))
+      .filter(Boolean) as WorldBookConfig[];
+
+    activeWorldBooks.forEach(book => {
+      book.entries?.forEach(entry => {
+        // 搜集主词条关键字和别名关键字
+        if (entry.keys) {
+          entry.keys.forEach(k => {
+            const name = k.trim();
+            if (name.length >= 2 && name.length <= 10) {
+              allowedNpcNamesFromWorldBooks.add(normalizeEntityName(name));
+            }
+          });
+        }
+      });
+    });
+  } catch (e) {
+    console.error("提取关系网 NPC 失败", e);
+  }
+
+  const isNpcAllowedByRelations = (npcName: string, isGroup = false): boolean => {
+    const norm = normalizeEntityName(npcName);
+    if (!norm) return false;
+    if (blockedNpcOnlyNames.has(norm)) return false;
+    
+    // 1. 默认常识性亲属名称（仅限单聊允许，群聊不允许胡乱加入家庭群）
+    const relativeFamilyPatterns = /^(妈妈|爸爸|爸|妈|姐姐|哥哥|弟弟|妹妹|大伯|小姨|姑姑|舅舅|爷爷|奶奶|外公|外婆|岳母|岳父)$/;
+    if (!isGroup && relativeFamilyPatterns.test(npcName)) return true;
+
+    // 2. 默认核心原厂的好友 NPC 必须保留
+    const defaultAllowed = ["死党阿杰", "阿杰", "雪儿", "林依依"];
+    if (defaultAllowed.some(name => normalizeEntityName(name) === norm)) return true;
+
+    // 3. 如果当前角色世界书（玩家录入的卷宗关系网）有内容，则强约束必须在世界书内定义过，防跨宇宙乱入！
+    if (allowedNpcNamesFromWorldBooks.size > 0) {
+      return allowedNpcNamesFromWorldBooks.has(norm) || 
+             Array.from(allowedNpcNamesFromWorldBooks).some(allowed => norm.includes(allowed) || allowed.includes(norm));
+    }
+    return true;
+  };
+
   const mergeBy = <T extends { id: string }>(base: T[], extra: T[], keyFn?: (item: T) => string) => {
     const seen = new Set<string>();
     const result: T[] = [];
@@ -1128,7 +1177,7 @@ function mergeChatPayload(
       realPayload.conversations,
       (supplemental?.conversations ?? []).filter((item) => {
         const name = normalizeEntityName(item.name);
-        return !!name && !blockedNpcOnlyNames.has(name) && !realConversationNames.has(name);
+        return !!name && !realConversationNames.has(name) && isNpcAllowedByRelations(item.name);
       }),
       (item) => normalizeEntityName(item.name) || item.id,
     ).slice(0, 10),
@@ -1139,10 +1188,17 @@ function mergeChatPayload(
         if (groupName && realGroupNames.has(groupName)) return false;
         const preview = normalizeEntityName(item.preview);
         if (preview.includes(normalizeEntityName(userName))) return false;
+        
+        // 检查群聊名称或者群员列表是否有异世界乱入人物
+        const isGroupAllowed = isNpcAllowedByRelations(item.name);
+        if (!isGroupAllowed) return false;
+
         return !item.messages.some((message) => {
           const author = normalizeEntityName(message.authorLabel);
           const text = normalizeEntityName(message.text);
-          return author === normalizeEntityName(userName) || text.includes(normalizeEntityName(userName));
+          return author === normalizeEntityName(userName) || 
+                 text.includes(normalizeEntityName(userName)) ||
+                 (message.authorLabel && !isNpcAllowedByRelations(message.authorLabel));
         });
       }),
       (item) => normalizeEntityName(item.name) || item.id,
@@ -1192,7 +1248,30 @@ async function buildCheckPhoneAppMessages(
     retrieveCoreMemoriesForPrompt(characterId, memConfig).catch(() => null),
   ]);
 
-  return assemblePromptPayload({
+  // 关系网强约束：获取并分析玩家卷宗（世界书关系网）里的 NPC 人物词条，拒绝胡乱生成异世界人物乱入
+  const allowedNpcNames: string[] = ["死党阿杰", "阿杰", "雪儿", "林依依"];
+  try {
+    worldBooks.forEach(book => {
+      book.entries?.forEach(entry => {
+        if (entry.keys) {
+          entry.keys.forEach(k => {
+            const name = k.trim();
+            if (name.length >= 2 && name.length <= 10 && !allowedNpcNames.includes(name)) {
+              allowedNpcNames.push(name);
+            }
+          });
+        }
+      });
+    });
+  } catch (e) {
+    console.error("提取关系网 NPC 失败", e);
+  }
+
+  const restrictionInstruction = allowedNpcNames.length > 0 
+    ? `\n<npc_restriction_instruction>\n极重要关系网约束：\n你生成本应用(appId: ${appId})内容中的联系人、微信群聊成员、发帖人、朋友圈动态博主或互动评论者名字时，必须优先且严格从以下已知的关系网 NPC 名单中挑选，绝对不允许无端胡乱生成该名单以外的异世界或无关动漫/偶像人设（如金泰亨、田柾国等），除非该名字已在名单内。\n已知合法 NPC 关系网候选名单：[${allowedNpcNames.join(", ")}]\n</npc_restriction_instruction>`
+    : "";
+
+  const basePayload = await assemblePromptPayload({
     character,
     history: [],
     preset,
@@ -1216,6 +1295,20 @@ async function buildCheckPhoneAppMessages(
       settings.bilingualTranslationPrompt,
     ),
   });
+
+  // 如果有限制指令，将其无损塞进 Prompt basePayload 的 system 消息中，从而在硬件级进行严格的名字过滤和名单锁定
+  if (restrictionInstruction && basePayload.length > 0) {
+    const firstMsg = basePayload[0];
+    if (firstMsg) {
+      if (typeof firstMsg.content === "string") {
+        firstMsg.content = restrictionInstruction + "\n" + firstMsg.content;
+      } else if (Array.isArray(firstMsg.content)) {
+        firstMsg.content.unshift({ type: "text", text: restrictionInstruction });
+      }
+    }
+  }
+
+  return basePayload;
 }
 
 function normalizeNotesPayload(payload: unknown): CheckPhoneNotesPayload | null {
