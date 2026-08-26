@@ -163,39 +163,165 @@ export function CheckPhoneDouyinPage({
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [captionCanExpand, setCaptionCanExpand] = useState(false);
-  // 终极掌控：私信界面及拉黑情敌状态
+  // 终极掌控：私信界面及多NPC私信会话管理
   const [dmOpen, setDmOpen] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [dmText, setDmText] = useState("");
-  const [rivalDeleted, setRivalDeleted] = useState(false);
-  const [dmMessages, setDmMessages] = useState<Array<{ role: "user" | "assistant"; text: string; time: string; type?: string }>>([
-    {
-      role: "assistant",
-      text: "昨晚在酒吧看到你了，你旁边的那个人是TA吗？真不知道你图TA什么，要不要出来喝一杯？",
-      time: "昨天 23:40"
-    }
-  ]);
+  const [blockedNpcs, setBlockedNpcs] = useState<string[]>([]);
+  const [localDmHistory, setLocalDmHistory] = useState<Record<string, Array<{ role: "user" | "assistant"; text: string; time: string; type?: string }>>>({});
 
-  // 强行删除拉黑情敌林依依
-  const handleDeleteRival = async () => {
+  // 从 localStorage 加载本地回复历史和黑名单
+  useEffect(() => {
+    const historyKey = `aiphone:checkphone:${character.id}:douyin_dms`;
+    const blockedKey = `aiphone:checkphone:${character.id}:douyin_blocked`;
+    try {
+      const savedHistory = localStorage.getItem(historyKey);
+      if (savedHistory) {
+        setLocalDmHistory(JSON.parse(savedHistory));
+      }
+      const savedBlocked = localStorage.getItem(blockedKey);
+      if (savedBlocked) {
+        setBlockedNpcs(JSON.parse(savedBlocked));
+      }
+    } catch (e) {
+      console.error("加载抖音私信历史失败", e);
+    }
+  }, [character.id]);
+
+  // 保存本地回复历史的方法
+  const saveDmHistory = (threadId: string, newMsg: { role: "user" | "assistant"; text: string; time: string; type?: string }) => {
+    setLocalDmHistory(prev => {
+      const updated = {
+        ...prev,
+        [threadId]: [...(prev[threadId] || []), newMsg]
+      };
+      localStorage.setItem(`aiphone:checkphone:${character.id}:douyin_dms`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // 保存黑名单的方法
+  const saveBlockedNpc = (threadId: string) => {
+    setBlockedNpcs(prev => {
+      const updated = [...prev, threadId];
+      localStorage.setItem(`aiphone:checkphone:${character.id}:douyin_blocked`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // 动态从抖音当前快照数据生成真实的联系人网
+  const dmThreads = useMemo(() => {
+    if (!payload) return [];
+    
+    // 搜集候选人名字
+    const candidates = new Set<string>();
+    
+    // 1. 搜集喜欢、收藏视频的作者
+    payload.likedVideos?.forEach(v => { if (v.authorName) candidates.add(v.authorName.replace(/^@/, "")); });
+    payload.savedVideos?.forEach(v => { if (v.authorName) candidates.add(v.authorName.replace(/^@/, "")); });
+    
+    // 2. 搜集自己作品评论区的评论人
+    const collectComments = (videos: typeof payload.works) => {
+      videos?.forEach(v => {
+        v.comments?.forEach(c => {
+          if (c.authorName) candidates.add(c.authorName.replace(/^@/, ""));
+        });
+      });
+    };
+    collectComments(payload.works);
+    collectComments(payload.likedVideos);
+    collectComments(payload.savedVideos);
+    
+    // 排除自己、角色卡自己、主聊天User名字
+    const charName = character.name.trim();
+    const userName = (window as any).AiPhone?.user?.name || "用户";
+    candidates.delete(charName);
+    candidates.delete(userName);
+    candidates.delete(payload.profile.name);
+    
+    let list = Array.from(candidates).filter(Boolean);
+    
+    // 备用高质感NPC，防止列表为空（确保原厂林依依在兜底首位）
+    const defaultNpcs = ["林依依", "张经理", "陆思恒", "沈学长", "楚晚晚", "顾总"];
+    while (list.length < 4) {
+      const next = defaultNpcs.find(name => !list.includes(name) && name !== charName);
+      if (next) list.push(next);
+      else break;
+    }
+    
+    // 最多4个联系人
+    list = list.slice(0, 4);
+    
+    // 3. 构建高质感会话线程
+    const threads = list.map((npcName, idx) => {
+      const threadId = `dy_dm_${npcName}`;
+      
+      let npcRole = "熟人";
+      let initialMsg = "在忙吗？你最近在抖音发的这个作品感觉很有意思。";
+      
+      // 根据索引设定关系和特定的暧昧/日常搭讪开场
+      if (npcName === "林依依" || idx === 0) {
+        npcRole = "搭讪情敌";
+        initialMsg = `昨晚在酒吧看到你了，你旁边的那个人是TA吗？真不知道你图TA什么。要不要出来喝一杯？`;
+      } else if (idx === 1) {
+        npcRole = "亲密死党";
+        initialMsg = "老实交代！你抖音天天收藏些什么情感语录呢？你是不是跟那人闹别扭了？";
+      } else if (idx === 2) {
+        npcRole = "工作伙伴 / 熟人";
+        initialMsg = "你刚才发的视频背景是在公司附近拍的吗？刚好我也在，等会儿要不要一起吃个便饭聊聊？";
+      } else {
+        npcRole = "昔日旧识";
+        initialMsg = "刷到你的动态了，你现在变了很多，看来过得很幸福……有空的话叙叙旧？";
+      }
+      
+      const initialDmMessages = [
+        {
+          role: "assistant" as const,
+          text: initialMsg,
+          time: "昨天 23:40"
+        }
+      ];
+      
+      const history = localDmHistory[threadId] || [];
+      const finalMessages = [...initialDmMessages, ...history];
+      
+      return {
+        id: threadId,
+        senderName: npcName,
+        avatarLabel: npcName.slice(0, 1),
+        relationLabel: npcRole,
+        messages: finalMessages,
+        latestMessage: finalMessages[finalMessages.length - 1],
+        unread: history.length === 0,
+      };
+    });
+    
+    return threads.filter(t => !blockedNpcs.includes(t.id));
+  }, [payload, character.name, localDmHistory, blockedNpcs]);
+
+  // 强行拉黑删除联系人
+  const handleDeleteNpc = async (threadId: string) => {
+    const thread = dmThreads.find(t => t.id === threadId);
+    if (!thread) return;
     if (!(window as any).AiPhone) return;
+    
     const ok = await (window as any).AiPhone.ui.confirm({
-      title: "❌ 强行拉黑情敌",
-      message: "确认要使用漏洞特权强制在对方手机中删除并拉黑搭讪情敌“林依依”吗？"
+      title: `❌ 强行拉黑 ${thread.senderName}`,
+      message: `确认要使用漏洞特权强行在对方手机抖音中删除并拉黑“${thread.senderName}”（${thread.relationLabel}）吗？此操作将斩断桃花！`
     });
     if (!ok) return;
 
-    setRivalDeleted(true);
-    setDmMessages(prev => [
-      ...prev,
-      { role: "assistant", text: "—— 系统已强制为您删除并拉黑了该情敌 ——", time: "刚刚", type: "system" }
-    ]);
-    await (window as any).AiPhone.ui.toast("情敌已强行拉黑切断！");
+    saveBlockedNpc(threadId);
+    if (activeThreadId === threadId) {
+      setActiveThreadId(null);
+    }
+    await (window as any).AiPhone.ui.toast(`已将 ${thread.senderName} 强行拉黑并切断联系！`);
 
     try {
       await (window as any).AiPhone.chat.writeHistory({
         characterId: character.id,
         role: "system",
-        content: `[警报：用户在你的手机抖音上，强制使用管理员权限把你一直以来的搭讪情敌“林依依”彻底拉黑删除了！并且代替你斩断了所有的暧昧桃花！]`
+        content: `[警报：用户在你的手机抖音上，强制使用管理员权限把你一直以来的搭讪/暧昧人“${thread.senderName}”（${thread.relationLabel}）彻底拉黑删除了！并且代替你斩断了暧昧桃花！]`
       });
       await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
     } catch (e) {
@@ -203,22 +329,23 @@ export function CheckPhoneDouyinPage({
     }
   };
 
-  // 伪装Char给情敌回私信
+  // 伪装 Char 回复私信
   const handleSendDm = async () => {
-    if (!dmText.trim()) return;
+    if (!dmText.trim() || !activeThreadId) return;
     const text = dmText.trim();
+    const currentThread = dmThreads.find(t => t.id === activeThreadId);
+    if (!currentThread) return;
+
     setDmText("");
-    setDmMessages(prev => [
-      ...prev,
-      { role: "user", text, time: "刚刚" }
-    ]);
+    const newMsg = { role: "user" as const, text, time: "刚刚" };
+    saveDmHistory(activeThreadId, newMsg);
 
     if ((window as any).AiPhone) {
       try {
         await (window as any).AiPhone.chat.writeHistory({
           characterId: character.id,
           role: "system",
-          content: `[提醒：用户在你的手机抖音上，伪装你的身份，替你给搭讪你的情敌“林依依”回了一条占有欲十足的驱赶冷落私信，内容是：“${text}”！]`
+          content: `[提醒：用户在你的手机抖音上，伪装你的身份，替你给搭讪你的“${currentThread.senderName}”（${currentThread.relationLabel}）回了一条占有欲十足的驱赶冷落私信，内容是：“${text}”！]`
         });
         await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
       } catch (e) {
@@ -1521,70 +1648,150 @@ export function CheckPhoneDouyinPage({
       {dmOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50" style={{ zIndex: 9999 }}>
           <div className="bg-neutral-900 rounded-2xl w-80 overflow-hidden text-white shadow-2xl flex flex-col border border-neutral-800 h-96">
-            {/* 私信头 */}
-            <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/80">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-red-500 text-white font-bold text-xs flex items-center justify-center">林</div>
-                <div>
-                  <span className="text-xs font-bold block">林依依</span>
-                  <span className="text-[9px] text-neutral-400">情敌 · 搭讪</span>
+            {activeThreadId === null ? (
+              <>
+                {/* 私信列表头部 */}
+                <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/80">
+                  <div>
+                    <span className="text-xs font-bold block">私信会话</span>
+                    <span className="text-[9px] text-neutral-400">点击进入或强行切断暧昧联系</span>
+                  </div>
                 </div>
-              </div>
-              <button 
-                onClick={!rivalDeleted ? handleDeleteRival : undefined} 
-                disabled={rivalDeleted}
-                className={`text-[9px] px-2 py-1 rounded font-bold border transition-colors ${rivalDeleted ? 'border-neutral-800 text-neutral-600' : 'border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}
-              >
-                {rivalDeleted ? "已拉黑" : "拉黑删除情敌"}
-              </button>
-            </div>
 
-            {/* 消息区 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar text-xs bg-black/40">
-              {dmMessages.map((msg, index) => {
-                if (msg.type === "system") {
+                {/* 列表主体 */}
+                <div className="flex-1 overflow-y-auto no-scrollbar bg-black/40 divide-y divide-neutral-850">
+                  {dmThreads.length > 0 ? (
+                    dmThreads.map((thread) => (
+                      <div 
+                        key={thread.id}
+                        onClick={() => setActiveThreadId(thread.id)}
+                        className="p-3.5 flex items-center justify-between gap-3 hover:bg-neutral-800/50 active:bg-neutral-800 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="relative flex-shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-neutral-700 text-white font-bold text-xs flex items-center justify-center border border-neutral-600">
+                              {thread.avatarLabel}
+                            </div>
+                            {thread.unread && (
+                              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-neutral-900" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-xs font-bold truncate text-neutral-100">{thread.senderName}</span>
+                              <span className="text-[8px] text-red-400 px-1 bg-red-500/10 border border-red-500/20 rounded-sm">
+                                {thread.relationLabel}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 truncate mt-0.5">
+                              {thread.latestMessage?.text}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteNpc(thread.id);
+                          }}
+                          className="text-[9px] px-2 py-1 rounded font-bold border border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20 active:scale-95 transition-all flex-shrink-0"
+                        >
+                          拉黑桃花
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-neutral-500 py-10">
+                      <PhosphorChatTeardrop size={32} weight="fill" className="text-neutral-700 mb-2" />
+                      <p className="text-[10px]">暂无任何桃花/私信记录</p>
+                      <p className="text-[9px] text-neutral-600 mt-1">或全部已被漏洞强制拉黑</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* 活跃单聊头部 */}
+                {(() => {
+                  const activeThread = dmThreads.find(t => t.id === activeThreadId);
+                  if (!activeThread) return null;
                   return (
-                    <div key={index} className="text-center text-[10px] text-neutral-500 my-2 italic">
-                      {msg.text}
+                    <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/80">
+                      <div className="flex items-center gap-2.5">
+                        <button 
+                          onClick={() => setActiveThreadId(null)} 
+                          className="p-1 -ml-1 text-neutral-400 hover:text-white transition-colors"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <div className="w-7 h-7 rounded-full bg-neutral-700 text-white font-bold text-xs flex items-center justify-center border border-neutral-600">
+                          {activeThread.avatarLabel}
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold block">{activeThread.senderName}</span>
+                          <span className="text-[9px] text-neutral-400">{activeThread.relationLabel}</span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleDeleteNpc(activeThread.id)} 
+                        className="text-[9px] px-2 py-1 rounded font-bold border border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                      >
+                        拉黑此人
+                      </button>
                     </div>
                   );
-                }
-                const isOutgoing = msg.role === "user";
-                return (
-                  <div key={index} className={`flex gap-2 ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
-                    {!isOutgoing && <div className="w-6 h-6 rounded-full bg-neutral-700 text-white flex items-center justify-center text-[10px] flex-shrink-0">林</div>}
-                    <div className="max-w-[75%]">
-                      <div className={`p-2.5 rounded-2xl leading-relaxed break-all ${isOutgoing ? 'bg-red-500 text-white rounded-tr-sm' : 'bg-neutral-800 text-neutral-200 rounded-tl-sm'}`}>
-                        {msg.text}
-                      </div>
-                      <div className="text-[8px] text-neutral-500 mt-1" style={{ textAlign: isOutgoing ? 'right' : 'left' }}>{msg.time}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                })()}
 
-            {/* 底部输入框 */}
-            <div className="p-3 border-t border-neutral-800 flex items-center gap-2 bg-neutral-900">
-              <input 
-                type="text"
-                value={dmText}
-                onChange={(e) => setDmText(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSendDm()}
-                placeholder={rivalDeleted ? "已被强制拉黑..." : "替对方回私信挑衅情敌..."}
-                disabled={rivalDeleted}
-                className="flex-1 bg-black border border-neutral-850 rounded-full px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 disabled:opacity-40"
-              />
-              <button 
-                onClick={handleSendDm}
-                disabled={rivalDeleted}
-                className="w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center hover:scale-95 active:scale-90 transition-transform disabled:opacity-40"
-              >
-                <ChevronLeft size={16} className="transform rotate-180" />
-              </button>
-            </div>
+                {/* 消息历史区 */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar text-xs bg-black/40">
+                  {dmThreads.find(t => t.id === activeThreadId)?.messages.map((msg, index) => {
+                    if (msg.type === "system") {
+                      return (
+                        <div key={index} className="text-center text-[10px] text-neutral-500 my-2 italic">
+                          {msg.text}
+                        </div>
+                      );
+                    }
+                    const isOutgoing = msg.role === "user";
+                    const activeThread = dmThreads.find(t => t.id === activeThreadId);
+                    return (
+                      <div key={index} className={`flex gap-2 ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
+                        {!isOutgoing && (
+                          <div className="w-6 h-6 rounded-full bg-neutral-700 text-white flex items-center justify-center text-[10px] flex-shrink-0">
+                            {activeThread?.avatarLabel}
+                          </div>
+                        )}
+                        <div className="max-w-[75%]">
+                          <div className={`p-2.5 rounded-2xl leading-relaxed break-all ${isOutgoing ? 'bg-red-500 text-white rounded-tr-sm' : 'bg-neutral-800 text-neutral-200 rounded-tl-sm'}`}>
+                            {msg.text}
+                          </div>
+                          <div className="text-[8px] text-neutral-500 mt-1" style={{ textAlign: isOutgoing ? 'right' : 'left' }}>{msg.time}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 私信输入区 */}
+                <div className="p-3 border-t border-neutral-800 flex items-center gap-2 bg-neutral-900">
+                  <input 
+                    type="text"
+                    value={dmText}
+                    onChange={(e) => setDmText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendDm()}
+                    placeholder="替对方回私信冷落桃花..."
+                    className="flex-1 bg-black border border-neutral-850 rounded-full px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                  />
+                  <button 
+                    onClick={handleSendDm}
+                    className="w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center hover:scale-95 active:scale-90 transition-transform"
+                  >
+                    <ChevronLeft size={16} className="transform rotate-180" />
+                  </button>
+                </div>
+              </>
+            )}
             <button 
-              onClick={() => setDmOpen(false)}
+              onClick={() => { setDmOpen(false); setActiveThreadId(null); }}
               className="w-full py-2.5 bg-neutral-850 text-neutral-400 font-medium text-xs text-center border-t border-neutral-800 hover:bg-neutral-800"
             >
               关闭私信
