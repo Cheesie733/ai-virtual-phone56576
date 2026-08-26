@@ -624,7 +624,12 @@ function CheckPhoneBubbleAvatar({
   );
 }
 
-function CheckPhoneChatComposer() {
+function CheckPhoneChatComposer({
+  onSend,
+}: {
+  onSend: (text: string) => void;
+}) {
+  const [text, setText] = useState("");
   const iconStyle = {
     width: "32px",
     height: "32px",
@@ -637,6 +642,12 @@ function CheckPhoneChatComposer() {
     flexShrink: 0,
     border: "1px solid rgba(255, 255, 255, 0.76)",
     boxShadow: "0 6px 14px rgba(70, 76, 112, 0.025)",
+  };
+
+  const handleSend = () => {
+    if (!text.trim()) return;
+    onSend(text.trim());
+    setText("");
   };
 
   return (
@@ -674,23 +685,19 @@ function CheckPhoneChatComposer() {
           border: "1px solid rgba(155, 132, 235, 0.08)",
         }}
       >
-        <span
-          style={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Type a message...
-        </span>
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          placeholder="以对方身份打字给TA发消息..."
+          style={{ width: "100%", height: "100%", background: "transparent", border: "none", outline: "none" }}
+        />
         <Smile size={17} strokeWidth={2} style={{ flexShrink: 0 }} />
       </div>
-      <div style={iconStyle} aria-hidden="true">
-        <Mic size={17} strokeWidth={2.2} />
-      </div>
-      <div style={iconStyle} aria-hidden="true">
-        <MoreHorizontal size={18} strokeWidth={2.2} />
-      </div>
+      <button onClick={handleSend} style={{ ...iconStyle, border: "none", cursor: "pointer" }}>
+        <Plus size={18} strokeWidth={2.2} style={{ transform: "rotate(45deg)" }} />
+      </button>
     </div>
   );
 }
@@ -711,6 +718,254 @@ export function CheckPhoneChatPage({
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [aliasModalOpen, setAliasModalOpen] = useState(false);
+  const [aliasInput, setAliasInput] = useState("");
+  const [activeAliasTarget, setActiveAliasTarget] = useState<"user" | null>(null);
+  const [forwardText, setForwardText] = useState("");
+  const [forwardModalOpen, setForwardModalOpen] = useState(false);
+  const [momentText, setMomentText] = useState("");
+  const [momentImg, setMomentImg] = useState("");
+
+  // 微信伪装身份发送并由NPC拉扯回复机制
+  const handleSendFakeMessage = async (text: string, type: "direct" | "group") => {
+    if (!snapshot || !payload) return;
+    const nowLabel = "刚刚";
+    const nextPayload = { ...payload };
+
+    if (type === "direct" && selectedConversationId) {
+      const convIdx = nextPayload.conversations.findIndex(c => c.id === selectedConversationId);
+      if (convIdx !== -1) {
+        const conv = nextPayload.conversations[convIdx];
+        const newMsg: CheckPhoneChatBubble = {
+          id: `fake_${Date.now()}`,
+          text,
+          timeLabel: nowLabel,
+          direction: "outgoing",
+        };
+        const updatedConv = {
+          ...conv,
+          preview: text,
+          timeLabel: nowLabel,
+          messages: [...conv.messages, newMsg],
+        };
+        nextPayload.conversations = [
+          updatedConv,
+          ...nextPayload.conversations.filter(c => c.id !== selectedConversationId)
+        ];
+        
+        // 模拟 NPC 在 1.5 秒后回复
+        setTimeout(async () => {
+          let reply = "……？你今天怎么怪怪的？";
+          if (selectedConversationId.includes("ajie")) {
+            const ajieReplies = [
+              "卧槽，你今天怎么这副腔调？是不是找我借钱？",
+              "今晚雪儿聚会也会去，老地方见，你可别怂。",
+              "天天和楼主暧昧拉扯，别怪哥们没提醒你迟早玩脱。",
+            ];
+            reply = ajieReplies[Math.floor(Math.random() * ajieReplies.length)];
+          } else if (selectedConversationId.includes("xueer")) {
+            const xueerReplies = [
+              "你总是这样忽冷忽热，我回国了，今晚老地方，我等你。",
+              "别拿普通朋友搪塞我。上周深夜你分享的那首歌明明是我们以前常听的。",
+              "今晚八点，老地方，你知道我脾气的。",
+            ];
+            reply = xueerReplies[Math.floor(Math.random() * xueerReplies.length)];
+          }
+          const replyMsg: CheckPhoneChatBubble = {
+            id: `reply_${Date.now()}`,
+            text: reply,
+            timeLabel: "刚刚",
+            direction: "incoming",
+          };
+          const latestPayload = { ...nextPayload };
+          const latestConvIdx = latestPayload.conversations.findIndex(c => c.id === selectedConversationId);
+          if (latestConvIdx !== -1) {
+            const latestConv = latestPayload.conversations[latestConvIdx];
+            const withReply = {
+              ...latestConv,
+              preview: reply,
+              timeLabel: "刚刚",
+              messages: [...latestConv.messages, replyMsg],
+            };
+            latestPayload.conversations = [
+              withReply,
+              ...latestPayload.conversations.filter(c => c.id !== selectedConversationId)
+            ];
+            const newSnapshot = { ...snapshot, payload: latestPayload, updatedAt: new Date().toISOString() };
+            await savePhoneSnapshot(newSnapshot);
+            setSnapshot(newSnapshot);
+            if (window.AiPhone) await AiPhone.ui.toast("收到微信新消息");
+          }
+        }, 1500);
+      }
+    } else if (type === "group" && selectedGroupId) {
+      const groupIdx = nextPayload.groups.findIndex(g => g.id === selectedGroupId);
+      if (groupIdx !== -1) {
+        const grp = nextPayload.groups[groupIdx];
+        const newMsg: CheckPhoneChatBubble = {
+          id: `fake_${Date.now()}`,
+          text,
+          timeLabel: nowLabel,
+          direction: "outgoing",
+          authorLabel: "Char",
+        };
+        const updatedGrp = {
+          ...grp,
+          preview: `Char: ${text}`,
+          timeLabel: nowLabel,
+          messages: [...grp.messages, newMsg],
+        };
+        nextPayload.groups = [
+          updatedGrp,
+          ...nextPayload.groups.filter(g => g.id !== selectedGroupId)
+        ];
+        
+        setTimeout(async () => {
+          const reply = "阿杰：噗，楼主今晚要加班，某位大忙人今晚空得很！";
+          const replyMsg: CheckPhoneChatBubble = {
+            id: `reply_${Date.now()}`,
+            text: reply,
+            timeLabel: "刚刚",
+            direction: "incoming",
+            authorLabel: "死党阿杰",
+          };
+          const latestPayload = { ...nextPayload };
+          const latestGrpIdx = latestPayload.groups.findIndex(g => g.id === selectedGroupId);
+          if (latestGrpIdx !== -1) {
+            const latestGrp = latestPayload.groups[latestGrpIdx];
+            const withReply = {
+              ...latestGrp,
+              preview: reply,
+              timeLabel: "刚刚",
+              messages: [...latestGrp.messages, replyMsg],
+            };
+            latestPayload.groups = [
+              withReply,
+              ...latestPayload.groups.filter(g => g.id !== selectedGroupId)
+            ];
+            const newSnapshot = { ...snapshot, payload: latestPayload, updatedAt: new Date().toISOString() };
+            await savePhoneSnapshot(newSnapshot);
+            setSnapshot(newSnapshot);
+            if (window.AiPhone) await AiPhone.ui.toast("收到微信群新消息");
+          }
+        }, 1500);
+      }
+    }
+
+    const newSnapshot = { ...snapshot, payload: nextPayload, updatedAt: new Date().toISOString() };
+    await savePhoneSnapshot(newSnapshot);
+    setSnapshot(newSnapshot);
+  };
+
+  // 修改你在对方手机里的备注
+  const handleSaveAlias = async () => {
+    if (!aliasInput.trim() || !window.AiPhone) return;
+    setAliasModalOpen(false);
+    try {
+      await AiPhone.chat.writeHistory({
+        characterId: character.id,
+        role: "system",
+        content: `[提醒：用户翻看你的手机微信，把你（用户）在对方手机里的好友备注偷偷改成了极为暧昧的：“${aliasInput.trim()}”！]`
+      });
+      await AiPhone.ui.toast(`备注已成功修改为 “${aliasInput.trim()}”`);
+      await AiPhone.chat.requestReply({ characterId: character.id });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // 长按/双击转发对质
+  const handleTriggerForward = (msgText: string) => {
+    setForwardText(msgText);
+    setForwardModalOpen(true);
+  };
+
+  const executeForwardToChar = async () => {
+    setForwardModalOpen(false);
+    if (!window.AiPhone) return;
+    try {
+      await AiPhone.chat.sendCard({
+        characterId: character.id,
+        role: "user",
+        summary: `你转发了一条截屏证据向对方对质。`,
+        historyText: `[截屏对质：你把从对方手机上查到的记录证据转发给了TA，内容是：“${forwardText}”，拿着这个记录开始跟对方核实和对质！]`,
+        card: {
+          appLabel: "查手机 · 证据对质",
+          title: "📌 截屏对质单",
+          subtitle: "SCREENSHOT EVIDENCE",
+          status: "等待回应",
+          accentColor: "#ff2d55",
+          sections: [
+            { title: "对质证据", rows: [
+              { label: "截获内容", value: forwardText.substring(0, 60) + (forwardText.length > 60 ? "..." : "") }
+            ] }
+          ],
+          actions: [{ label: "开始对质和推拉" }]
+        }
+      });
+      await AiPhone.ui.toast("证据卡片已成功同步到主聊天室！");
+      await AiPhone.chat.requestReply({ characterId: character.id });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // 替对方发朋友圈并触发吐槽反应
+  const handlePostMoment = async () => {
+    if (!momentText.trim() || !snapshot || !payload) return;
+    const nowLabel = "刚刚";
+    const newFeed: CheckPhoneChatMomentItem = {
+      id: `moment_${Date.now()}`,
+      authorLabel: character.name || "对方",
+      authorAccent: "朋友圈",
+      timeLabel: nowLabel,
+      body: momentText.trim(),
+      mediaLabel: momentImg ? "有图" : "文字",
+      photoUrl: momentImg || undefined,
+      likeCountLabel: "0 赞",
+      commentCountLabel: "2 评论",
+      comments: [
+        {
+          id: `comment_1_${Date.now()}`,
+          authorLabel: "死党阿杰",
+          timeLabel: nowLabel,
+          text: "？？你吃错药了吧发这个？发给某人看呢？",
+        },
+        {
+          id: `comment_2_${Date.now()}`,
+          authorLabel: "雪儿",
+          timeLabel: nowLabel,
+          text: "怎么，心有所属了就急着发这种矫情动态撇清自己？",
+        }
+      ]
+    };
+    
+    const nextPayload = {
+      ...payload,
+      momentsFeed: [newFeed, ...payload.momentsFeed]
+    };
+    
+    const newSnapshot = { ...snapshot, payload: nextPayload, updatedAt: new Date().toISOString() };
+    await savePhoneSnapshot(newSnapshot);
+    setSnapshot(newSnapshot);
+    setMomentText("");
+    setMomentImg("");
+
+    if (window.AiPhone) {
+      try {
+        await AiPhone.chat.writeHistory({
+          characterId: character.id,
+          role: "system",
+          content: `[提醒：用户替你发了一篇内容为“${newFeed.body}”的朋友圈动态，阿杰和雪儿已经在底下做出了极其刺眼的拉扯吐槽评论！]`
+        });
+        await AiPhone.ui.toast("朋友圈已同步至主聊天室！");
+        await AiPhone.chat.requestReply({ characterId: character.id });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
 
   useEffect(() => {
     let cancelled = false;
@@ -1999,7 +2254,13 @@ export function CheckPhoneChatPage({
                               }}
                             />
                           ) : null}
-                          <span style={{ position: "relative", zIndex: 1, display: "block" }}>
+                          <span 
+                            style={{ position: "relative", zIndex: 1, display: "block" }} 
+                            onDoubleClick={() => handleTriggerForward(message.text)}
+                            onContextMenu={(e) => { e.preventDefault(); handleTriggerForward(message.text); }}
+                            title="双击或长按可转发此截屏罪证向TA对质"
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                          >
                             <CheckPhoneMessageContent
                               text={message.text}
                               characterId={character.id}
@@ -2026,7 +2287,7 @@ export function CheckPhoneChatPage({
                 })}
               </div>
             </div>
-            <CheckPhoneChatComposer />
+            <CheckPhoneChatComposer onSend={(text) => handleSendFakeMessage(text, "direct")} />
           </div>
         )}
 
@@ -2142,7 +2403,13 @@ export function CheckPhoneChatPage({
                               }}
                             />
                           ) : null}
-                          <span style={{ position: "relative", zIndex: 1, display: "block" }}>
+                          <span 
+                            style={{ position: "relative", zIndex: 1, display: "block" }} 
+                            onDoubleClick={() => handleTriggerForward(message.text)}
+                            onContextMenu={(e) => { e.preventDefault(); handleTriggerForward(message.text); }}
+                            title="双击或长按可转发此截屏罪证向TA对质"
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                          >
                             <CheckPhoneMessageContent
                               text={message.text}
                               characterId={character.id}
@@ -2177,10 +2444,71 @@ export function CheckPhoneChatPage({
                 })}
               </div>
             </div>
-            <CheckPhoneChatComposer />
+            <CheckPhoneChatComposer onSend={(text) => handleSendFakeMessage(text, "group")} />
           </div>
         )}
       </div>
+
+      {/* 备注管理模态弹窗 */}
+      {aliasModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" style={{ zIndex: 9999 }}>
+          <div className="bg-white rounded-2xl w-80 overflow-hidden text-neutral-950 shadow-2xl flex flex-col items-center border border-neutral-200">
+            <div className="p-6 flex flex-col gap-3 w-full">
+              <h3 className="text-center font-bold text-base">修改你在对方手机里的微信备注</h3>
+              <input 
+                type="text"
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                placeholder="请输入你在TA手机里的新备注..."
+                className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <div className="flex w-full border-t border-neutral-200">
+              <button 
+                onClick={() => setAliasModalOpen(false)}
+                className="flex-1 py-3 text-neutral-500 font-medium text-sm hover:bg-neutral-50 active:bg-neutral-100 border-r border-neutral-200"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleSaveAlias}
+                className="flex-1 py-3 text-green-600 font-bold text-sm hover:bg-neutral-50 active:bg-neutral-100"
+              >
+                确认修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 证据转发对质弹窗 */}
+      {forwardModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" style={{ zIndex: 9999 }}>
+          <div className="bg-white rounded-2xl w-80 overflow-hidden text-neutral-950 shadow-2xl flex flex-col items-center border border-neutral-200">
+            <div className="p-6 flex flex-col gap-2.5 w-full">
+              <h3 className="text-center font-bold text-base">截屏转发至主聊天室对质</h3>
+              <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-100 p-2.5 rounded-lg text-left line-clamp-3 max-h-24 overflow-y-auto no-scrollbar">
+                {forwardText}
+              </p>
+            </div>
+            <div className="flex flex-col w-full border-t border-neutral-200">
+              <button 
+                onClick={executeForwardToChar}
+                className="w-full py-3.5 text-red-500 font-bold text-sm hover:bg-neutral-50 active:bg-neutral-100 border-b border-neutral-200"
+              >
+                💬 转发并要求TA当场解释
+              </button>
+              <button 
+                onClick={() => setForwardModalOpen(false)}
+                className="w-full py-3.5 text-neutral-500 font-semibold text-sm hover:bg-neutral-50 active:bg-neutral-100"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmClearOpen && (
         <ConfirmDialog
           title="清空聊天内容？"

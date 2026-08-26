@@ -37,6 +37,36 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
     setExpandedId(prev => prev === id ? null : id);
   }
 
+  const handleForwardBrowserItem = async (title: string, urlLabel: string, content: string) => {
+    if (!(window as any).AiPhone) return;
+    try {
+      await (window as any).AiPhone.chat.sendCard({
+        characterId: character.id,
+        role: "user",
+        summary: `你转发了一条浏览器历史记录向对方对质。`,
+        historyText: `[截屏对质：你把在对方手机上截获到的浏览器历史/收藏记录转发给TA，内容是：“${title} - ${content.substring(0, 100)}”，并要求TA合理解释！]`,
+        card: {
+          appLabel: "查手机 · 浏览器对质",
+          title: "📌 截屏对质单",
+          subtitle: "BROWSER EVIDENCE",
+          status: "等待回应",
+          accentColor: "#007aff",
+          sections: [
+            { title: "对质证据", rows: [
+              { label: "网页标题", value: title.substring(0, 30) },
+              { label: "网址", value: urlLabel }
+            ] }
+          ],
+          actions: [{ label: "开始对质和核实" }]
+        }
+      });
+      await (window as any).AiPhone.ui.toast("浏览器证据卡片已同步至对质聊天！");
+      await (window as any).AiPhone.chat.requestReply({ characterId: character.id });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     setLoaded(false);
@@ -276,6 +306,15 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                             <span><CheckPhoneBilingualText text={item.innerThought} tone="browser" /></span>
                           </div>
                         )}
+                        <div className="mt-3 flex justify-end">
+                          <button 
+                            type="button" 
+                            onClick={() => handleForwardBrowserItem(item.title, item.urlLabel, item.content || "")}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-colors"
+                          >
+                            🔗 转发并和TA对质
+                          </button>
+                        </div>
                       </div>
                     )}
                   </article>
