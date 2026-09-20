@@ -104,6 +104,7 @@ export class MacroEngine {
 
     /** Main entry: iteratively expand all macros (innermost first). */
     expand(text: string): string {
+        if (!text || typeof text !== "string") return text || "";
         const MAX_ITERATIONS = 50;
         let result = text;
         for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -339,6 +340,7 @@ export class MacroEngine {
 
 /** Post-process: remove {{trim}} sentinels and surrounding newlines. */
 export function postProcessTrim(text: string): string {
+    if (!text || typeof text !== "string") return text || "";
     // Remove trim sentinels along with any surrounding newlines
     return text.replace(/\n*\x00TRIM\x00\n*/g, "");
 }

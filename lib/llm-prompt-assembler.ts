@@ -379,6 +379,7 @@ function isPromptEnabled(prompt: Prompt, promptOrder?: PromptOrderEntry[]): bool
 
 // ── Helper: sanitize identifier into valid XML tag name ──
 function toXmlTag(identifier: string): string {
+    if (!identifier) return "unknown";
     // Replace non-alphanumeric (except _ and -) with underscore, ensure starts with letter
     let tag = identifier.replace(/[^a-zA-Z0-9_\-]/g, "_");
     if (!/^[a-zA-Z]/.test(tag)) tag = "x_" + tag;
@@ -1488,6 +1489,7 @@ function shouldRunRule(
 
 /** Apply regex rules that match a given placement + context. */
 function applyRegex(text: string, regexGroups: RegexConfig[], placement: number, ctx: RegexContext = {}): string {
+    if (!text) return "";
     let result = text;
     for (const group of regexGroups) {
         for (const rule of group.rules) {
