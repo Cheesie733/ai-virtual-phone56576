@@ -3,6 +3,7 @@ export function containsChinese(text: string): boolean {
 }
 
 export function normalizeBilingualTextInput(text: string): string {
+    if (!text || typeof text !== "string") return "";
     return text.replace(/\\r\\n|\\n|\\r/g, "\n");
 }
 
