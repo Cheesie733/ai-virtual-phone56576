@@ -294,6 +294,7 @@ function describeEmptyLLMResponse(
  * 星期等尾巴与全角括号——prompt 给历史消息标注的时间带时区时，AI 会照格式模仿。
  */
 export function stripHallucinatedTimestamps(text: string): string {
+    if (!text || typeof text !== "string") return text || "";
     return text
         .replace(/[（(]\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?(?:\s+[^)）]*)?[)）]\s*/g, "")
         .replace(/\(system\s*time\s*[:：][^)]*\)\s*/gi, "");
