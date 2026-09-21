@@ -960,7 +960,7 @@ function extractDirectConversation(
       muted: session.isMuted === true,
       pinned: session.isPinned === true,
       tagLabel: "真实会话",
-      messages: visibleMessages.slice(-10).map((msg) => ({
+      messages: visibleMessages.slice(-30).map((msg) => ({
         id: msg.id,
         text: getCheckPhoneRealChatText(msg),
         timeLabel: formatChatUiTime(msg.createdAt),
@@ -991,7 +991,7 @@ function extractRealGroups(
         muted: session.isMuted === true,
         memberCountLabel: `${memberCount}`,
         activityLabel: formatChatUiTime(latest.createdAt),
-        messages: visibleMessages.slice(-10).map((msg) => {
+        messages: visibleMessages.slice(-30).map((msg) => {
           const senderName =
             msg.role === "user"
               ? userName
