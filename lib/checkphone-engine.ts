@@ -1182,7 +1182,7 @@ function mergeChatPayload(
         return !!name && !realConversationNames.has(name) && isNpcAllowedByRelations(item.name);
       }),
       (item) => normalizeEntityName(item.name) || item.id,
-    ).slice(0, 10),
+    ).slice(0, 20),
     groups: mergeBy(
       realPayload.groups,
       (supplemental?.groups ?? []).filter((item) => {
@@ -1192,19 +1192,18 @@ function mergeChatPayload(
         if (preview.includes(normalizeEntityName(userName))) return false;
         
         // 检查群聊名称或者群员列表是否有异世界乱入人物
-        const isGroupAllowed = isNpcAllowedByRelations(item.name);
+        const isGroupAllowed = isNpcAllowedByRelations(item.name, true);
         if (!isGroupAllowed) return false;
 
         return !item.messages.some((message) => {
           const author = normalizeEntityName(message.authorLabel);
           const text = normalizeEntityName(message.text);
           return author === normalizeEntityName(userName) || 
-                 text.includes(normalizeEntityName(userName)) ||
-                 (message.authorLabel && !isNpcAllowedByRelations(message.authorLabel));
+                 text.includes(normalizeEntityName(userName));
         });
       }),
       (item) => normalizeEntityName(item.name) || item.id,
-    ).slice(0, 8),
+    ).slice(0, 15),
     momentsFeed: mergeBy(
       realPayload.momentsFeed,
       (supplemental?.momentsFeed ?? []).filter(
@@ -5336,10 +5335,10 @@ function normalizeChatPayload(payload: unknown): Partial<CheckPhoneChatPayload> 
   }
 
   return {
-    conversations: conversations.slice(0, 6),
-    groups: groups.slice(0, 5),
-    momentsFeed: momentsFeed.slice(0, 6),
-    contacts: contacts.slice(0, 8),
+    conversations: conversations.slice(0, 15),
+    groups: groups.slice(0, 12),
+    momentsFeed: momentsFeed.slice(0, 10),
+    contacts: contacts.slice(0, 20),
   };
 }
 
