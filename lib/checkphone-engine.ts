@@ -1148,15 +1148,7 @@ function mergeChatPayload(
     const familyGroupPatterns = /(家|亲戚|亲友|相亲相爱|家族|群)/;
     if (isGroup && familyGroupPatterns.test(npcName)) return true;
 
-    // 2. 默认核心原厂的好友 NPC 必须保留
-    const defaultAllowed = ["死党阿杰", "阿杰", "雪儿", "林依依"];
-    if (defaultAllowed.some(name => normalizeEntityName(name) === norm)) return true;
-
-    // 3. 如果当前角色世界书（玩家录入的卷宗关系网）有内容，则强约束必须在世界书内定义过，防跨宇宙乱入！
-    if (allowedNpcNamesFromWorldBooks.size > 0) {
-      return allowedNpcNamesFromWorldBooks.has(norm) || 
-             Array.from(allowedNpcNamesFromWorldBooks).some(allowed => norm.includes(allowed) || allowed.includes(norm));
-    }
+    // 2. 任何角色设定相关的 NPC、常见人名或群名全部自由放行，不再做死板名单拦截
     return true;
   };
 
@@ -1249,28 +1241,7 @@ async function buildCheckPhoneAppMessages(
     retrieveCoreMemoriesForPrompt(characterId, memConfig).catch(() => null),
   ]);
 
-  // 关系网强约束：获取并分析玩家卷宗（世界书关系网）里的 NPC 人物词条，拒绝胡乱生成异世界人物乱入
-  const allowedNpcNames: string[] = ["死党阿杰", "阿杰", "雪儿", "林依依"];
-  try {
-    worldBooks.forEach(book => {
-      book.entries?.forEach(entry => {
-        if (entry.keys) {
-          entry.keys.forEach(k => {
-            const name = k.trim();
-            if (name.length >= 2 && name.length <= 10 && !allowedNpcNames.includes(name)) {
-              allowedNpcNames.push(name);
-            }
-          });
-        }
-      });
-    });
-  } catch (e) {
-    console.error("提取关系网 NPC 失败", e);
-  }
-
-  const restrictionInstruction = allowedNpcNames.length > 0 
-    ? `\n<npc_restriction_instruction>\n极重要关系网约束：\n你生成本应用(appId: ${appId})内容中的联系人、微信群聊成员、发帖人、朋友圈动态博主或互动评论者名字时，必须优先且严格从以下已知的关系网 NPC 名单中挑选，绝对不允许无端胡乱生成该名单以外的异世界或无关动漫/偶像人设（如金泰亨、田柾国等），除非该名字已在名单内。如果是生成聊天(chat)或通讯录，可以并且强烈鼓励生成亲属(如爸爸、妈妈、姐姐、妹妹)；如果是生成群聊，强烈鼓励生成家属群(如相亲相爱一家人、家族群)以及同学群、工作群等多元化群聊。\n已知合法 NPC 关系网候选名单：[${allowedNpcNames.join(", ")}]\n</npc_restriction_instruction>`
-    : "";
+  const restrictionInstruction = `\n<npc_generation_instruction>\n极重要角色关系与社交生成指令：\n1. 角色记忆与NPC：必须严格结合该角色(${character.name})自己的人设背景、过往记忆、以及世界书里定义的好友/同事/关系网！绝对不要生成毫无关联的死板测试假人。\n2. 单聊联系人：必须丰满多样，包含该角色的现实人际圈，强烈要求包含亲人(如妈妈、爸爸、姐姐等家庭成员)、挚友/闺蜜/兄弟、以及日常工作/学业伙伴。\n3. 群聊(非常重要)：群聊绝不能只有一个！请生成至少 4 到 8 个不同生活维度的群聊（例如：家庭群【相亲相爱一家人/温馨小窝】、死党群、同学/舍友群、工作/项目组、兴趣/游戏开黑群等），让群列表充实热闹！\n</npc_generation_instruction>`;
 
   const browserSpecificInstruction = appId === "browser" 
     ? `\n<browser_app_instruction>\n极重要浏览器内容和排版要求：\n对于历史记录(history)，务必生成一些体现角色搜索记录或发帖的内容。\n- 搜索记录：要写出角色主动搜索了什么内容。同时“内容”字段应展示该网页下网友的具体讨论和评论(注意格式和真实感)。\n- 发帖提问：角色自己发的问题贴(如情感、亲密问题等)，正文必须尽可能详细，同样的，下面务必带有网友评论区的互动(例如“评论1作者”、”评论1内容“)。\n- 拒绝尬写：之前的浏览情境和内心描写太尬，请根据他的人设和记忆生成符合逻辑、自然生动、甚至带点隐秘或爆点的内容，不要写空洞的总结。\n- 输出格式：为支持评论区抓取，在记录项中务必输出形如 [评论1作者] 某某网友 [评论1内容] 真的假的... 的附加字段。\n</browser_app_instruction>` 
