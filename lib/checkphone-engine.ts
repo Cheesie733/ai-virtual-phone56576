@@ -1142,9 +1142,11 @@ function mergeChatPayload(
     if (!norm) return false;
     if (blockedNpcOnlyNames.has(norm)) return false;
     
-    // 1. 默认常识性亲属名称（仅限单聊允许，群聊不允许胡乱加入家庭群）
+    // 1. 默认常识性亲属名称和常见家庭群名（单聊和群聊都允许）
     const relativeFamilyPatterns = /^(妈妈|爸爸|爸|妈|姐姐|哥哥|弟弟|妹妹|大伯|小姨|姑姑|舅舅|爷爷|奶奶|外公|外婆|岳母|岳父)$/;
-    if (!isGroup && relativeFamilyPatterns.test(npcName)) return true;
+    if (relativeFamilyPatterns.test(npcName)) return true;
+    const familyGroupPatterns = /(家|亲戚|亲友|相亲相爱|家族|群)/;
+    if (isGroup && familyGroupPatterns.test(npcName)) return true;
 
     // 2. 默认核心原厂的好友 NPC 必须保留
     const defaultAllowed = ["死党阿杰", "阿杰", "雪儿", "林依依"];
@@ -1268,7 +1270,7 @@ async function buildCheckPhoneAppMessages(
   }
 
   const restrictionInstruction = allowedNpcNames.length > 0 
-    ? `\n<npc_restriction_instruction>\n极重要关系网约束：\n你生成本应用(appId: ${appId})内容中的联系人、微信群聊成员、发帖人、朋友圈动态博主或互动评论者名字时，必须优先且严格从以下已知的关系网 NPC 名单中挑选，绝对不允许无端胡乱生成该名单以外的异世界或无关动漫/偶像人设（如金泰亨、田柾国等），除非该名字已在名单内。\n已知合法 NPC 关系网候选名单：[${allowedNpcNames.join(", ")}]\n</npc_restriction_instruction>`
+    ? `\n<npc_restriction_instruction>\n极重要关系网约束：\n你生成本应用(appId: ${appId})内容中的联系人、微信群聊成员、发帖人、朋友圈动态博主或互动评论者名字时，必须优先且严格从以下已知的关系网 NPC 名单中挑选，绝对不允许无端胡乱生成该名单以外的异世界或无关动漫/偶像人设（如金泰亨、田柾国等），除非该名字已在名单内。如果是生成聊天(chat)或通讯录，可以并且强烈鼓励生成亲属(如爸爸、妈妈、姐姐、妹妹)；如果是生成群聊，强烈鼓励生成家属群(如相亲相爱一家人、家族群)以及同学群、工作群等多元化群聊。\n已知合法 NPC 关系网候选名单：[${allowedNpcNames.join(", ")}]\n</npc_restriction_instruction>`
     : "";
 
   const browserSpecificInstruction = appId === "browser" 
