@@ -235,7 +235,7 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
           <>
             {selectedItem ? (
               /* 二级详情页：模仿发帖提问与网友评论排版 */
-              <div className="flex flex-col h-full bg-white text-black select-none relative z-50 animate-in fade-in slide-in-from-right-4 duration-200">
+              <div className="flex flex-col bg-[#f9f9f9] text-black select-none relative z-50 animate-in fade-in slide-in-from-right-4 duration-200 min-h-full" style={{ margin: '-16px -16px 0', padding: '0' }}>
                 <header className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] bg-white shrink-0">
                   <button 
                     type="button" 
@@ -249,38 +249,40 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                   <div className="w-10"></div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto pb-24 px-4 pt-4">
-                  <h2 className="text-lg font-bold text-black/90 leading-snug mb-3.5">
-                    <CheckPhoneBilingualText text={selectedItem.title} tone="browser" />
-                  </h2>
+                <div className="flex-1 overflow-y-auto pb-24">
+                  <div className="bg-white px-5 pt-5 pb-6 mb-2 border-b border-black/[0.04]">
+                    <h2 className="text-[19px] font-bold text-black/90 leading-snug mb-4">
+                      <CheckPhoneBilingualText text={selectedItem.title} tone="browser" />
+                    </h2>
 
-                  <div className="p-3 bg-black/[0.02] border border-black/[0.04] rounded-xl flex items-center gap-3 mb-4.5">
-                    <div className="w-9 h-9 rounded-full bg-black/10 flex items-center justify-center text-black/40 shrink-0">
-                      <Globe size={18} />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-semibold text-black/70">匿名用户</span>
-                      <div className="flex gap-3 text-[10px] text-black/40 mt-0.5">
-                        <span>👁️ {(parseInt(selectedItem.id.replace(/\D/g, '')) || 3) * 128 + 432} 浏览</span>
-                        <span>❤️ {(parseInt(selectedItem.id.replace(/\D/g, '')) || 2) * 45 + 12} 赞</span>
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-full bg-black/10 flex items-center justify-center text-black/40 shrink-0">
+                        <Globe size={20} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[13px] font-bold text-black/80">匿名用户</span>
+                        <div className="flex gap-3 text-[11px] text-black/40 mt-0.5">
+                          <span>👁️ {(parseInt(selectedItem.id.replace(/\D/g, '')) || 3) * 128 + 432} 浏览</span>
+                          <span>❤️ {(parseInt(selectedItem.id.replace(/\D/g, '')) || 2) * 45 + 12} 赞</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="text-sm leading-relaxed text-black/80 whitespace-pre-wrap select-text mb-6 pl-0.5">
-                    <CheckPhoneBilingualText text={selectedItem.content} tone="browser" />
+                    <div className="text-[15px] leading-relaxed text-black/80 whitespace-pre-wrap select-text tracking-wide">
+                      <CheckPhoneBilingualText text={selectedItem.content} tone="browser" />
+                    </div>
                   </div>
 
                   {(selectedItem.context || selectedItem.innerThought) && (
-                    <div className="p-3 bg-blue-50/50 border border-blue-100/40 rounded-xl mb-6 flex flex-col gap-2">
+                    <div className="mx-4 p-3 bg-blue-50/50 border border-blue-100/40 rounded-xl mb-3 flex flex-col gap-2">
                       {selectedItem.context && (
-                        <div className="text-xs text-blue-600/80">
+                        <div className="text-xs text-blue-600/80 leading-relaxed">
                           <span className="font-bold mr-1">情境:</span>
                           <CheckPhoneBilingualText text={selectedItem.context} tone="browser" />
                         </div>
                       )}
                       {selectedItem.innerThought && (
-                        <div className="text-xs text-blue-600/80">
+                        <div className="text-xs text-blue-600/80 leading-relaxed">
                           <span className="font-bold mr-1">内心想法:</span>
                           <CheckPhoneBilingualText text={selectedItem.innerThought} tone="browser" />
                         </div>
@@ -288,27 +290,41 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                     </div>
                   )}
 
-                  <div className="py-2.5 border-t border-black/[0.06] flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-black/50">💬 评论 ({selectedItem.comments?.length || 0})</span>
-                    <span className="text-[10px] text-black/30">智能推荐</span>
-                  </div>
+                  <div className="bg-white border-y border-black/[0.04]">
+                    <div className="px-5 py-3.5 border-b border-black/[0.03] flex items-center justify-between">
+                      <span className="text-[15px] font-bold text-black/80 flex items-center gap-1.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-black/30">
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                        </svg>
+                        评论 ({selectedItem.comments?.length || 0})
+                      </span>
+                    </div>
 
-                  <div className="flex flex-col gap-3">
-                    {selectedItem.comments && selectedItem.comments.length > 0 ? (
-                      selectedItem.comments.map((comment, index) => (
-                        <div key={comment.id || index} className="bg-black/[0.02] border border-black/[0.03] rounded-xl p-3 flex flex-col gap-1.5">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-black/60">{comment.authorName}</span>
-                            <span className="text-[10px] text-black/30">{index === 0 ? '2小时前' : index === 1 ? '1小时前' : '30分钟前'}</span>
+                    <div className="flex flex-col">
+                      {selectedItem.comments && selectedItem.comments.length > 0 ? (
+                        selectedItem.comments.map((comment, index) => (
+                          <div key={comment.id || index} className="flex gap-3 px-5 py-4 border-b border-black/[0.03] last:border-b-0">
+                            <div className="w-8 h-8 rounded-full bg-black/5 flex-shrink-0 flex items-center justify-center text-black/30 mt-0.5">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-baseline mb-1">
+                                <span className="text-[13px] font-bold text-black/70">{comment.authorName}</span>
+                                <span className="text-[10px] text-black/30">{index === 0 ? '2小时前' : index === 1 ? '1小时前' : '30分钟前'}</span>
+                              </div>
+                              <p className="text-[14px] text-black/90 leading-relaxed">
+                                <CheckPhoneBilingualText text={comment.text} tone="browser" />
+                              </p>
+                            </div>
                           </div>
-                          <p className="text-xs text-black/80 leading-relaxed">
-                            <CheckPhoneBilingualText text={comment.text} tone="browser" />
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-xs text-black/30 text-center py-6">暂无网友评论</div>
-                    )}
+                        ))
+                      ) : (
+                        <div className="text-[13px] text-black/30 text-center py-8">暂无网友评论</div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -342,8 +358,7 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                   </button>
                 </div>
 
-                <div className="cp-receipt-wrapper">
-                  <div className="cp-browser-list" style={{ padding: '0 8px' }}>
+                <div className="cp-browser-list" style={{ padding: '0 16px', marginTop: '12px' }}>
                     {activeTab === 'history' && history.length === 0 && (
                       <div className="cp-browser-empty-list">无历史记录</div>
                     )}
@@ -414,7 +429,6 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                       </button>
                     ))}
                   </div>
-                </div>
               </>
             )}
           </>
