@@ -32,6 +32,7 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"history" | "bookmarks">("history");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
   function toggleExpand(id: string) {
     setExpandedId(prev => prev === id ? null : id);
@@ -232,142 +233,190 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
 
         {payload && (
           <>
-            <div className="cp-browser-tabs-folder">
-              <button 
-                type="button" 
-                className={`cp-folder-tab ${activeTab === 'history' ? 'active' : ''}`}
-                onClick={() => setActiveTab('history')}
-              >
-                历史记录
-              </button>
-              <button 
-                type="button" 
-                className={`cp-folder-tab ${activeTab === 'bookmarks' ? 'active' : ''}`}
-                onClick={() => setActiveTab('bookmarks')}
-              >
-                收藏夹
-              </button>
-            </div>
+            {selectedItem ? (
+              /* 二级详情页：模仿发帖提问与网友评论排版 */
+              <div className="flex flex-col h-full bg-white text-black select-none relative z-50 animate-in fade-in slide-in-from-right-4 duration-200">
+                <header className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] bg-white shrink-0">
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedItem(null)} 
+                    className="flex items-center gap-1 text-black/70 hover:text-black font-semibold text-sm"
+                  >
+                    <ChevronLeft size={18} strokeWidth={2.5} />
+                    <span>返回</span>
+                  </button>
+                  <span className="font-bold text-sm text-black/80">搜索结果</span>
+                  <div className="w-10"></div>
+                </header>
 
-            <div className="cp-receipt-wrapper">
-              <div className="cp-receipt-paperclips">
-                <div className="cp-paperclip-left">
-                  <svg width="11" height="32" viewBox="0 0 22 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M11 50V14C11 11.2386 13.2386 9 16 9C18.7614 9 21 11.2386 21 14V50C21 55.5228 16.5228 60 11 60C5.47715 60 1 55.5228 1 50V10C1 5.02944 5.02944 1 10 1C14.9706 1 19 5.02944 19 10V46" stroke="#b0b0b8" strokeWidth="2.8" strokeLinecap="round"/>
-                  </svg>
+                <div className="flex-1 overflow-y-auto pb-24 px-4 pt-4">
+                  <h2 className="text-lg font-bold text-black/90 leading-snug mb-3.5">
+                    <CheckPhoneBilingualText text={selectedItem.title} tone="browser" />
+                  </h2>
+
+                  <div className="p-3 bg-black/[0.02] border border-black/[0.04] rounded-xl flex items-center gap-3 mb-4.5">
+                    <div className="w-9 h-9 rounded-full bg-black/10 flex items-center justify-center text-black/40 shrink-0">
+                      <Globe size={18} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-black/70">匿名用户</span>
+                      <div className="flex gap-3 text-[10px] text-black/40 mt-0.5">
+                        <span>👁️ {(parseInt(selectedItem.id.replace(/\D/g, '')) || 3) * 128 + 432} 浏览</span>
+                        <span>❤️ {(parseInt(selectedItem.id.replace(/\D/g, '')) || 2) * 45 + 12} 赞</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-sm leading-relaxed text-black/80 whitespace-pre-wrap select-text mb-6 pl-0.5">
+                    <CheckPhoneBilingualText text={selectedItem.content} tone="browser" />
+                  </div>
+
+                  {(selectedItem.context || selectedItem.innerThought) && (
+                    <div className="p-3 bg-blue-50/50 border border-blue-100/40 rounded-xl mb-6 flex flex-col gap-2">
+                      {selectedItem.context && (
+                        <div className="text-xs text-blue-600/80">
+                          <span className="font-bold mr-1">情境:</span>
+                          <CheckPhoneBilingualText text={selectedItem.context} tone="browser" />
+                        </div>
+                      )}
+                      {selectedItem.innerThought && (
+                        <div className="text-xs text-blue-600/80">
+                          <span className="font-bold mr-1">内心想法:</span>
+                          <CheckPhoneBilingualText text={selectedItem.innerThought} tone="browser" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="py-2.5 border-t border-black/[0.06] flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-black/50">💬 评论 ({selectedItem.comments?.length || 0})</span>
+                    <span className="text-[10px] text-black/30">智能推荐</span>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {selectedItem.comments && selectedItem.comments.length > 0 ? (
+                      selectedItem.comments.map((comment, index) => (
+                        <div key={comment.id || index} className="bg-black/[0.02] border border-black/[0.03] rounded-xl p-3 flex flex-col gap-1.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-black/60">{comment.authorName}</span>
+                            <span className="text-[10px] text-black/30">{index === 0 ? '2小时前' : index === 1 ? '1小时前' : '30分钟前'}</span>
+                          </div>
+                          <p className="text-xs text-black/80 leading-relaxed">
+                            <CheckPhoneBilingualText text={comment.text} tone="browser" />
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-black/30 text-center py-6">暂无网友评论</div>
+                    )}
+                  </div>
                 </div>
-                <div className="cp-paperclip-right">
-                  <svg width="11" height="32" viewBox="0 0 22 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M11 50V14C11 11.2386 13.2386 9 16 9C18.7614 9 21 11.2386 21 14V50C21 55.5228 16.5228 60 11 60C5.47715 60 1 55.5228 1 50V10C1 5.02944 5.02944 1 10 1C14.9706 1 19 5.02944 19 10V46" stroke="#b0b0b8" strokeWidth="2.8" strokeLinecap="round"/>
-                  </svg>
+
+                <div className="absolute bottom-4 left-4 right-4 z-20">
+                  <button 
+                    type="button" 
+                    onClick={() => handleForwardBrowserItem(selectedItem.title, selectedItem.urlLabel, selectedItem.content || "")}
+                    className="w-full py-3 rounded-xl bg-blue-500 text-white font-semibold text-xs shadow-lg hover:bg-blue-600 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    🔗 转发本页证据和TA对质
+                  </button>
                 </div>
               </div>
-              <div className="cp-browser-list">
-              {activeTab === 'history' && history.length === 0 && (
-                <div className="cp-browser-empty-list">无历史记录</div>
-              )}
-              {activeTab === 'bookmarks' && bookmarks.length === 0 && (
-                <div className="cp-browser-empty-list">无收藏记录</div>
-              )}
+            ) : (
+              /* 极简历史记录列表：模仿图一小清爽时钟风格 */
+              <>
+                <div className="cp-browser-tabs-folder">
+                  <button 
+                    type="button" 
+                    className={`cp-folder-tab ${activeTab === 'history' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('history')}
+                  >
+                    历史记录
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`cp-folder-tab ${activeTab === 'bookmarks' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('bookmarks')}
+                  >
+                    收藏夹
+                  </button>
+                </div>
 
-              {activeTab === 'history' && history.map((item) => {
-                const isExpanded = expandedId === item.id;
-                return (
-                  <article key={item.id} className={`cp-browser-list-item ${isExpanded ? 'expanded' : ''}`}>
-                    <button type="button" className="cp-browser-item-header" onClick={() => toggleExpand(item.id)}>
-                      <div className="cp-browser-item-icon">
-                        <Globe size={18} strokeWidth={2.2} />
-                      </div>
-                      <div className="cp-browser-item-info">
-                        <div className="cp-browser-item-title-row">
-                          <h4><CheckPhoneBilingualText text={item.title} tone="browser" variant="inline" /></h4>
-                          <time className="cp-browser-item-date">{formatChatUiTime(item.createdAt) || item.createdAt}</time>
-                        </div>
-                        <span>{item.urlLabel}</span>
-                        {item.content && (
-                          <div className="cp-browser-item-snippet">
-                            <CheckPhoneBilingualText text={item.content} tone="browser" />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                    
-                    {isExpanded && (item.context || item.innerThought || (item.comments && item.comments.length > 0)) && (
-                      <div className="cp-browser-item-details">
-                        {item.context && (
-                          <div className="cp-browser-history-note">
-                            <b>情境</b>
-                            <span><CheckPhoneBilingualText text={item.context} tone="browser" /></span>
-                          </div>
-                        )}
-                        {item.innerThought && (
-                          <div className="cp-browser-history-note cp-note-thought">
-                            <b>内心</b>
-                            <span><CheckPhoneBilingualText text={item.innerThought} tone="browser" /></span>
-                          </div>
-                        )}
-                        {item.comments && item.comments.length > 0 && (
-                          <div className="cp-browser-history-comments mt-2 border-t border-black/5 pt-2">
-                            <b className="text-xs text-black/40 block mb-1.5">网友评论区</b>
-                            <div className="flex flex-col gap-1.5">
-                              {item.comments.map((comment) => (
-                                <div key={comment.id} className="text-[13px] leading-snug bg-black/[0.03] rounded-md px-2.5 py-1.5">
-                                  <span className="font-medium text-black/60 mr-1.5">{comment.authorName}:</span>
-                                  <span className="text-black/80"><CheckPhoneBilingualText text={comment.text} tone="browser" /></span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <div className="mt-3 flex justify-end">
-                          <button 
-                            type="button" 
-                            onClick={() => handleForwardBrowserItem(item.title, item.urlLabel, item.content || "")}
-                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition-colors"
-                          >
-                            🔗 转发并和TA对质
-                          </button>
-                        </div>
-                      </div>
+                <div className="cp-receipt-wrapper">
+                  <div className="cp-browser-list" style={{ padding: '0 8px' }}>
+                    {activeTab === 'history' && history.length === 0 && (
+                      <div className="cp-browser-empty-list">无历史记录</div>
                     )}
-                  </article>
-                );
-              })}
+                    {activeTab === 'bookmarks' && bookmarks.length === 0 && (
+                      <div className="cp-browser-empty-list">无收藏记录</div>
+                    )}
 
-              {activeTab === 'bookmarks' && bookmarks.map((item) => {
-                const isExpanded = expandedId === item.id;
-                return (
-                  <article key={item.id} className={`cp-browser-list-item ${isExpanded ? 'expanded' : ''}`}>
-                    <button type="button" className="cp-browser-item-header" onClick={() => toggleExpand(item.id)}>
-                      <div className="cp-browser-item-icon cp-icon-bookmark">
-                        <Bookmark size={18} strokeWidth={2.2} />
-                      </div>
-                      <div className="cp-browser-item-info">
-                        <div className="cp-browser-item-title-row">
-                          <h4><CheckPhoneBilingualText text={item.title} tone="browser" variant="inline" /></h4>
-                          <span className="cp-list-tag">{item.categoryLabel}</span>
+                    {activeTab === 'history' && history.map((item) => (
+                      <button 
+                        key={item.id} 
+                        type="button"
+                        onClick={() => setSelectedItem(item)}
+                        className="w-full flex items-center gap-3.5 py-3.5 border-b border-black/[0.04] text-left active:bg-black/[0.02] transition-colors"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-black/[0.04] flex items-center justify-center text-black/40 shrink-0">
+                          <Clock size={17} />
                         </div>
-                        <span>{item.urlLabel}</span>
-                        {item.content && (
-                          <div className="cp-browser-item-snippet">
-                            <CheckPhoneBilingualText text={item.content} tone="browser" />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                    
-                    {isExpanded && item.reason && (
-                      <div className="cp-browser-item-details">
-                        <span className="cp-browser-bookmark-reason">
-                          <CheckPhoneBilingualText text={item.reason} tone="browser" />
-                        </span>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </div>
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          <h4 className="text-sm font-medium text-black/80 truncate">
+                            <CheckPhoneBilingualText text={item.title} tone="browser" variant="inline" />
+                          </h4>
+                          <time className="text-[11px] text-black/40">
+                            {formatChatUiTime(item.createdAt) || item.createdAt}
+                          </time>
+                        </div>
+                        <div className="text-black/20 pr-1 shrink-0">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </div>
+                      </button>
+                    ))}
+
+                    {activeTab === 'bookmarks' && bookmarks.map((item) => (
+                      <button 
+                        key={item.id} 
+                        type="button"
+                        onClick={() => setSelectedItem({
+                          id: item.id,
+                          title: item.title,
+                          urlLabel: item.urlLabel,
+                          createdAt: '收藏夹',
+                          content: item.content || '暂无详细介绍',
+                          context: item.categoryLabel,
+                          innerThought: item.reason,
+                          comments: []
+                        })}
+                        className="w-full flex items-center gap-3.5 py-3.5 border-b border-black/[0.04] text-left active:bg-black/[0.02] transition-colors"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-black/[0.04] flex items-center justify-center text-black/40 shrink-0">
+                          <Bookmark size={17} />
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          <h4 className="text-sm font-medium text-black/80 truncate">
+                            <CheckPhoneBilingualText text={item.title} tone="browser" variant="inline" />
+                          </h4>
+                          <span className="text-[10px] bg-black/[0.05] text-black/50 rounded px-1.5 py-0.5 self-start">
+                            {item.categoryLabel}
+                          </span>
+                        </div>
+                        <div className="text-black/20 pr-1 shrink-0">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
         </div>
