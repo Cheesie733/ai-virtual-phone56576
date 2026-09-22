@@ -292,7 +292,7 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                       </div>
                     </button>
                     
-                    {isExpanded && (item.context || item.innerThought) && (
+                    {isExpanded && (item.context || item.innerThought || (item.comments && item.comments.length > 0)) && (
                       <div className="cp-browser-item-details">
                         {item.context && (
                           <div className="cp-browser-history-note">
@@ -304,6 +304,19 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                           <div className="cp-browser-history-note cp-note-thought">
                             <b>内心</b>
                             <span><CheckPhoneBilingualText text={item.innerThought} tone="browser" /></span>
+                          </div>
+                        )}
+                        {item.comments && item.comments.length > 0 && (
+                          <div className="cp-browser-history-comments mt-2 border-t border-black/5 pt-2">
+                            <b className="text-xs text-black/40 block mb-1.5">网友评论区</b>
+                            <div className="flex flex-col gap-1.5">
+                              {item.comments.map((comment) => (
+                                <div key={comment.id} className="text-[13px] leading-snug bg-black/[0.03] rounded-md px-2.5 py-1.5">
+                                  <span className="font-medium text-black/60 mr-1.5">{comment.authorName}:</span>
+                                  <span className="text-black/80"><CheckPhoneBilingualText text={comment.text} tone="browser" /></span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                         <div className="mt-3 flex justify-end">

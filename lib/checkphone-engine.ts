@@ -1271,6 +1271,10 @@ async function buildCheckPhoneAppMessages(
     ? `\n<npc_restriction_instruction>\n极重要关系网约束：\n你生成本应用(appId: ${appId})内容中的联系人、微信群聊成员、发帖人、朋友圈动态博主或互动评论者名字时，必须优先且严格从以下已知的关系网 NPC 名单中挑选，绝对不允许无端胡乱生成该名单以外的异世界或无关动漫/偶像人设（如金泰亨、田柾国等），除非该名字已在名单内。\n已知合法 NPC 关系网候选名单：[${allowedNpcNames.join(", ")}]\n</npc_restriction_instruction>`
     : "";
 
+  const browserSpecificInstruction = appId === "browser" 
+    ? `\n<browser_app_instruction>\n极重要浏览器内容和排版要求：\n对于历史记录(history)，务必生成一些体现角色搜索记录或发帖的内容。\n- 搜索记录：要写出角色主动搜索了什么内容。同时“内容”字段应展示该网页下网友的具体讨论和评论(注意格式和真实感)。\n- 发帖提问：角色自己发的问题贴(如情感、亲密问题等)，正文必须尽可能详细，同样的，下面务必带有网友评论区的互动(例如“评论1作者”、”评论1内容“)。\n- 拒绝尬写：之前的浏览情境和内心描写太尬，请根据他的人设和记忆生成符合逻辑、自然生动、甚至带点隐秘或爆点的内容，不要写空洞的总结。\n- 输出格式：为支持评论区抓取，在记录项中务必输出形如 [评论1作者] 某某网友 [评论1内容] 真的假的... 的附加字段。\n</browser_app_instruction>` 
+    : "";
+
   const basePayload = await assemblePromptPayload({
     character,
     history: [],
@@ -1297,13 +1301,15 @@ async function buildCheckPhoneAppMessages(
   });
 
   // 如果有限制指令，将其无损塞进 Prompt basePayload 的 system 消息中，从而在硬件级进行严格的名字过滤和名单锁定
-  if (restrictionInstruction && basePayload.length > 0) {
+  const finalSystemInstruction = [restrictionInstruction, browserSpecificInstruction].filter(Boolean).join("\n");
+
+  if (finalSystemInstruction && basePayload.length > 0) {
     const firstMsg = basePayload[0];
     if (firstMsg) {
       if (typeof firstMsg.content === "string") {
-        firstMsg.content = restrictionInstruction + "\n" + firstMsg.content;
+        firstMsg.content = finalSystemInstruction + "\n" + firstMsg.content;
       } else if (Array.isArray(firstMsg.content)) {
-        firstMsg.content.unshift({ type: "text", text: restrictionInstruction });
+        firstMsg.content.unshift({ type: "text", text: finalSystemInstruction });
       }
     }
   }
@@ -4633,8 +4639,21 @@ function normalizeBrowserPayload(payload: unknown): CheckPhoneBrowserPayload | n
       const content = typeof entry.content === "string" ? entry.content.trim() : "";
       const context = typeof entry.context === "string" ? entry.context.trim() : "";
       const innerThought = typeof entry.innerThought === "string" ? entry.innerThought.trim() : "";
+      const commentsRaw = Array.isArray(entry.comments) ? entry.comments : [];
+      const comments = commentsRaw
+        .map((comment) => {
+          if (!comment || typeof comment !== "object") return null;
+          const c = comment as Record<string, unknown>;
+          const cid = typeof c.id === "string" ? c.id.trim() : "";
+          const cauthor = typeof c.authorName === "string" ? c.authorName.trim() : "";
+          const ctext = typeof c.text === "string" ? c.text.trim() : "";
+          if (!cid || !cauthor || !ctext) return null;
+          return { id: cid, authorName: cauthor, text: ctext };
+        })
+        .filter(Boolean) as CheckPhoneBrowserPayload["history"][number]["comments"];
+
       if (!id || !title || !urlLabel || !createdAt || !content) return null;
-      return { id, title, urlLabel, createdAt, content, context, innerThought };
+      return { id, title, urlLabel, createdAt, content, context, innerThought, comments };
     })
     .filter(Boolean) as CheckPhoneBrowserPayload["history"];
 
@@ -4704,6 +4723,16 @@ function parseBrowserBlockPayload(text: string): PhoneBlockParseResult {
       content: fields["内容"] || "",
       context: fields["情境"] || "",
       innerThought: fields["内心"] || "",
+      comments: Object.keys(fields)
+        .filter((k) => k.startsWith("评论") && k.endsWith("内容"))
+        .map((k) => {
+          const num = k.match(/^评论(\d+)内容$/)?.[1];
+          return {
+            id: `history${order}_comment_${num}`,
+            authorName: fields[`评论${num}作者`] || "网友",
+            text: fields[k],
+          };
+        }),
     }))
     .filter((item) => item.title && item.urlLabel);
   const bookmarks = parseBrowserEntryBlocks(bookmarksSection, "收藏")

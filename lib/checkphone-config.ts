@@ -87,6 +87,12 @@ export type CheckPhoneMessagesPayload = {
   threads: CheckPhoneMessageThread[];
 };
 
+export type CheckPhoneBrowserComment = {
+  id: string;
+  authorName: string;
+  text: string;
+};
+
 export type CheckPhoneBrowserHistoryItem = {
   id: string;
   title: string;
@@ -95,6 +101,7 @@ export type CheckPhoneBrowserHistoryItem = {
   content: string;
   context: string;
   innerThought: string;
+  comments?: CheckPhoneBrowserComment[];
 };
 
 export type CheckPhoneBrowserBookmark = {
