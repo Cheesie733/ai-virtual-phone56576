@@ -312,7 +312,16 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex justify-between items-baseline mb-1">
-                                <span className="text-[13px] font-bold text-black/70">{comment.authorName}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[13px] font-bold ${comment.authorName === '楼主' || comment.authorName.includes('楼主') ? 'text-blue-600' : 'text-black/70'}`}>
+                                    {comment.authorName}
+                                  </span>
+                                  {(comment.authorName === '楼主' || comment.authorName.includes('楼主')) && (
+                                    <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-200/60 rounded px-1 py-0.2 font-medium">
+                                      作者
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-[10px] text-black/30">{index === 0 ? '2小时前' : index === 1 ? '1小时前' : '30分钟前'}</span>
                               </div>
                               <p className="text-[14px] text-black/90 leading-relaxed">
