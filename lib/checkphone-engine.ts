@@ -1241,7 +1241,7 @@ async function buildCheckPhoneAppMessages(
     retrieveCoreMemoriesForPrompt(characterId, memConfig).catch(() => null),
   ]);
 
-  const restrictionInstruction = appId === "chat" ? `\n<npc_generation_instruction>\n极重要角色关系与社交生成指令：\n1. 角色记忆与真实NPC优先：必须严格结合该角色(${character.name})的人设、记忆、世界书关系网！单聊联系人【只能】是：真实的NPC朋友(如金硕珍、闵玧其等)、家人亲属(妈妈、爸爸、姐姐等)、以及班里的同学/同事。\n2. 严禁默认假名：绝对、永远不要生成“阿杰”、“雪儿”、“林依依”、“班长”这种烂大街的默认测试名字！不要用假名覆盖真实的NPC朋友！\n3. 群聊要求：生成 4 到 8 个群聊，包含家庭群(如相亲相爱一家人)、真实的死党群、同学群等，群成员必须也是真实NPC或家人。\n</npc_generation_instruction>` : "";
+  const restrictionInstruction = appId === "chat" ? `\n<npc_generation_instruction>\n极重要角色关系与社交生成指令：\n1. 记忆与聊天对白严禁乱编：单聊的聊天记录内容必须100%结合你与该角色(${character.name})过往的真实记忆、性格习惯和生活日常！绝对不准脱离记忆胡说八道！\n2. 真实NPC与家人联系人：单聊联系人列表中，必须包含：\n   - 角色世界书/设定里最核心真实的NPC好友（如：金硕珍、闵玧其等！不要换成假名！）\n   - 必须包含一到两个真实的家庭亲人单聊（如：妈妈、爸爸、姐姐等）\n   - 严禁出现任何“阿杰/雪儿/林依依/死党阿杰”等系统测试假名！\n3. 群聊列表（必须有家里群）：必须生成 4 到 8 个多元群聊！其中必须有至少一个家庭群（如：相亲相爱一家人/温馨家园，成员是妈妈、爸爸、姐姐等真实亲人）！另外包含真实死党群、工作/专业群等。\n</npc_generation_instruction>` : "";
 
   const browserSpecificInstruction = appId === "browser" 
     ? `\n<browser_app_instruction>\n极重要：浏览器历史记录(history)生成规则：\n1. 核心结合记忆：搜索和发帖必须100%结合角色(${character.name})真实的生平记忆、性格弱点、当下与用户(${userIdentity?.name ?? "用户"})的具体情感进展！\n2. 结构形态（务必丰富）：必须包含角色真实的【求助提问帖】（如情感困扰，包含楼主详细前因后果正文）和【主动搜索记录】。\n3. 格式与评论区（必须严格遵守标签）：绝不能把情境和内心写在正文里！必须严格使用方括号标签输出字段！必须带有网友评论！格式范例：\n## 记录1\n[标题] 处于暧昧期惹她生气了怎么哄？\n[网址] zhihu.com/question/123\n[时间] 2小时前\n[内容] (楼主详细的正文，吐槽或求助...)\n[情境] (真实接地气的动作描写，不要文艺总结)\n[内心] (真实的纠结内心，不要尬写)\n[评论1作者] 暴躁老姐\n[评论1内容] 别装了，赶紧买好吃的去找她！\n[评论2作者] 楼主\n[评论2内容] 真的管用吗...我试试\n</browser_app_instruction>` 
@@ -4687,25 +4687,62 @@ function parseBrowserBlockPayload(text: string): PhoneBlockParseResult {
     return { parsed: null, sanitizedCandidate: source, parseMode: "failed", parseError: "未找到 #历史记录 或 #收藏夹 分区" };
   }
   const history = parseBrowserEntryBlocks(historySection, "记录")
-    .map(({ order, fields }) => ({
-      id: `history${order}`,
-      title: fields["标题"] || "",
-      urlLabel: fields["网址"] || "",
-      createdAt: fields["时间"] || new Date().toISOString(),
-      content: fields["内容"] || "",
-      context: fields["情境"] || "",
-      innerThought: fields["内心"] || "",
-      comments: Object.keys(fields)
-        .filter((k) => k.startsWith("评论") && k.endsWith("内容"))
-        .map((k) => {
-          const num = k.match(/^评论(\d+)内容$/)?.[1];
-          return {
-            id: `history${order}_comment_${num}`,
-            authorName: fields[`评论${num}作者`] || "网友",
-            text: fields[k],
-          };
-        }),
-    }))
+    .map(({ order, fields }) => {
+      let rawContent = fields["内容"] || "";
+      const comments: CheckPhoneBrowserComment[] = [];
+
+      // 1. 优先从标准打标字段提取评论
+      Object.keys(fields)
+        .filter((k) => k.startsWith("评论") && (k.endsWith("内容") || !k.includes("作者")))
+        .forEach((k) => {
+          const num = k.match(/^评论(\d+)(?:内容)?$/)?.[1];
+          if (num && fields[k]?.trim()) {
+            comments.push({
+              id: `history${order}_comment_${num}`,
+              authorName: fields[`评论${num}作者`] || `热心网友_${num}`,
+              text: fields[k].trim(),
+            });
+          }
+        });
+
+      // 2. 容错提取：如果模型把讨论区写在正文/content里（如【热烈讨论区】、【网友支招】等），智能拆解为真实评论
+      if (comments.length === 0 && (rawContent.includes("【讨论") || rawContent.includes("【评论") || rawContent.includes("【网友") || rawContent.includes("网友评论"))) {
+        const splitMatch = rawContent.match(/(?:【(?:热烈讨论区|评论区|网友讨论|网友支招|回复互动|精选回复)[^】]*】|网友评论[：:]?)/i);
+        if (splitMatch && splitMatch.index !== undefined) {
+          const mainBody = rawContent.slice(0, splitMatch.index).trim();
+          const commentSection = rawContent.slice(splitMatch.index + splitMatch[0].length).trim();
+          rawContent = mainBody;
+          const lines = commentSection.split(/\n+/);
+          lines.forEach((line, idx) => {
+            const lineMatch = line.match(/^(?:(?:网友|[#\d]+[楼.]?|[-*•]|\d+[、.]?)\s*)?([^:：]+)[：:](.+)$/);
+            if (lineMatch) {
+              comments.push({
+                id: `history${order}_comment_parsed_${idx + 1}`,
+                authorName: lineMatch[1].trim() || `网友${idx + 1}`,
+                text: lineMatch[2].trim(),
+              });
+            } else if (line.trim().length > 4) {
+              comments.push({
+                id: `history${order}_comment_parsed_${idx + 1}`,
+                authorName: idx === 0 ? "情感导师" : `热心网友_${idx + 1}`,
+                text: line.trim(),
+              });
+            }
+          });
+        }
+      }
+
+      return {
+        id: `history${order}`,
+        title: fields["标题"] || "",
+        urlLabel: fields["网址"] || "",
+        createdAt: fields["时间"] || new Date().toISOString(),
+        content: rawContent,
+        context: fields["情境"] || "",
+        innerThought: fields["内心"] || "",
+        comments: comments.slice(0, 10),
+      };
+    })
     .filter((item) => item.title && item.urlLabel);
   const bookmarks = parseBrowserEntryBlocks(bookmarksSection, "收藏")
     .map(({ order, fields }) => ({
