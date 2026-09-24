@@ -253,6 +253,14 @@ const RICH_PATTERNS: {
         }),
     },
     {
+        regex: /\[我发起了(?:语音|群语音通话)通话\]/,
+        build: () => ({ content: "", mediaType: "voice_call" as const }),
+    },
+    {
+        regex: /\[我发起了(?:视频|群视频通话)通话\]/,
+        build: () => ({ content: "", mediaType: "video_call" as const }),
+    },
+    {
         regex: /\[我向[^\]]+发起了语音通话\]/,
         build: () => ({ content: "", mediaType: "voice_call" as const }),
     },
