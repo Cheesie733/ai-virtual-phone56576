@@ -672,11 +672,16 @@ export async function parseAndSaveResponse(
             content: `[我发起了${callLabel}]`,
             responseBatchId: createResponseBatchId(),
             rawResponseText: `[我发起了${callLabel}]`,
+            statusPanel,
+            innerMonologue,
+            reasoningText,
+            stateValues: stateValues.length > 0 ? stateValues : undefined,
+            freshStateValues,
         });
     }
 
     if (filteredParts.length === 0) {
-        if (statusPanel || innerMonologue || reasoningText) {
+        if (!triggerCall && (statusPanel || innerMonologue || reasoningText)) {
             pushChatMessage({
                 sessionId,
                 role: "assistant",
@@ -695,7 +700,7 @@ export async function parseAndSaveResponse(
         if (triggerCall && typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("ai-call-trigger", { detail: { sessionId, type: triggerCall } }));
         }
-        return { hasVisible: false, newCount: MAX_FOLLOW_UPS, stateValues };
+        return { hasVisible: true, newCount: currentCount + 1, stateValues };
     }
 
     const savedMessages: ChatMessage[] = [];
