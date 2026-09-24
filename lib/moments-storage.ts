@@ -6,6 +6,8 @@ import { loadCharacters } from "./character-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { DEFAULT_MOMENTS_BILINGUAL_PROMPT } from "./bilingual-prompt-defaults";
 import { canCharacterSeeMomentPost, getVisibleMomentCommentsForCharacter } from "./character-world-storage";
+import { requestBackgroundChatReply } from "./follow-up-service";
+import { pushChatMessage, createOrGetSession } from "./chat-storage";
 import {
     initMomentsDb,
     dbPutPost,
@@ -156,6 +158,21 @@ export function addMomentComment(comment: Omit<MomentComment, "id" | "createdAt"
     };
     _commentsCache = [...loadAllMomentComments(), newComment];
     dbPutComment(newComment);
+
+    // 联动私聊：如果用户评论了角色的朋友圈，角色会感知并可能主动发起私聊
+    if (comment.authorType === "user") {
+        const post = loadMomentPosts().find(p => p.id === comment.postId);
+        if (post && post.authorType === "character") {
+            const session = createOrGetSession(post.authorId);
+            pushChatMessage({
+                sessionId: session.id,
+                role: "system",
+                content: `[用户刚刚评论了你的朋友圈（"${post.content.slice(0, 20)}..."）。评论内容是："${comment.content}"。请结合你的人设，私聊回复用户刚才的评论，让对话更深入。]`,
+            });
+            requestBackgroundChatReply(session.id).catch(() => {});
+        }
+    }
+
     return newComment;
 }
 
@@ -219,8 +236,8 @@ export function toggleMomentLike(
 
     if (existingIdx >= 0) {
         post.likes.splice(existingIdx, 1);
-        dbPutPost(post); // post is a live ref into the cache; persist just this row
-        return false; // unliked
+        dbPutPost(post);
+        return false;
     } else {
         post.likes.push({
             authorType,
@@ -228,7 +245,18 @@ export function toggleMomentLike(
             createdAt: new Date().toISOString(),
         });
         dbPutPost(post);
-        return true; // liked
+
+        // 联动私聊：如果点赞的是角色的朋友圈，角色会感知并可能主动私聊
+        if (authorType === "user" && post.authorType === "character") {
+            const session = createOrGetSession(post.authorId);
+            pushChatMessage({
+                sessionId: session.id,
+                role: "system",
+                content: `[用户刚刚点赞了你发布的内容：“${post.content.slice(0, 30)}...”。请结合你的人设和你们当下的关系，主动找用户私聊，可以表达谢意、调侃或分享更多生活。]`,
+            });
+            requestBackgroundChatReply(session.id).catch(() => {});
+        }
+        return true;
     }
 }
 
