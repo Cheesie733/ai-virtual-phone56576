@@ -318,14 +318,18 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         const userIsUpset = userText.includes("烦") || userText.includes("哭") || userText.includes("别理我") || userText.includes("难受");
 
         let emotionHint = `[对方没有回复你的消息，距上次回复已过约${finalSilenceSec}秒]`;
+        const commonSuffix = " 请务必在回复中包含 [状态栏] 标签，展示你当前的好感度、焦虑值等心理指标变化。";
+
         if (isAngry) {
-            emotionHint = `[极重要：你现在非常生气，用户居然这么久没回你消息，你感到被忽视了！请继续发送消息表达你的质问，不要停止，直到对方回应。已过${finalSilenceSec}秒]`;
+            emotionHint = `[极重要：你现在非常生气，用户居然这么久没回你消息，你感到被忽视了！请继续发送消息表达你的质问，不要停止，直到对方回应。已过${finalSilenceSec}秒]` + commonSuffix;
         } else if (isJealous) {
-            emotionHint = `[极重要：你现在正在吃醋/生闷气，请主动发消息阴阳怪气地表达你的醋意。已过${finalSilenceSec}秒]`;
+            emotionHint = `[极重要：你现在正在吃醋/生闷气，请主动发消息阴阳怪气地表达你的醋意。已过${finalSilenceSec}秒]` + commonSuffix;
         } else if (isUpset) {
-            emotionHint = `[极重要：你现在感到很不安，请主动发消息寻找安慰。已过${finalSilenceSec}秒]`;
+            emotionHint = `[极重要：你现在感到很不安，请主动发消息寻找安慰。已过${finalSilenceSec}秒]` + commonSuffix;
         } else if (userIsUpset) {
-            emotionHint = `[极重要：你感知到用户现在心情很不好或在闹情绪，你非常担心。请继续耐心地、不间断地发消息哄 TA，即便 TA 不回你也要表达你的关心。已过${finalSilenceSec}秒]`;
+            emotionHint = `[极重要：你感知到用户现在心情很不好或在闹情绪，你非常担心。请继续耐心地、不间断地发消息哄 TA，即便 TA 不回你也要表达你的关心。已过${finalSilenceSec}秒]` + commonSuffix;
+        } else {
+            emotionHint += commonSuffix;
         }
 
         const messagesWithHint: ChatMessage[] = [

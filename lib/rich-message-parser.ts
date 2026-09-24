@@ -253,19 +253,12 @@ const RICH_PATTERNS: {
         }),
     },
     {
-        regex: /\[我发起了(?:语音|群语音通话)通话\]/,
+        // 极简兼容匹配：只要方括号内包含 发起/拨打/呼叫 + 语音/视频/通话 关键词，即刻拦截并触发真实通话界面
+        regex: /\[(?:我)?(?:向[^\]]+)?(?:发起|发起了|拨打|呼叫|开始)(?:了)?(?:语音|语音通话|通话|电话)\]/,
         build: () => ({ content: "", mediaType: "voice_call" as const }),
     },
     {
-        regex: /\[我发起了(?:视频|群视频通话)通话\]/,
-        build: () => ({ content: "", mediaType: "video_call" as const }),
-    },
-    {
-        regex: /\[我向[^\]]+发起了语音通话\]/,
-        build: () => ({ content: "", mediaType: "voice_call" as const }),
-    },
-    {
-        regex: /\[我向[^\]]+发起了视频通话\]/,
+        regex: /\[(?:我)?(?:向[^\]]+)?(?:发起|发起了|拨打|呼叫|开始)(?:了)?(?:视频|视频通话)\]/,
         build: () => ({ content: "", mediaType: "video_call" as const }),
     },
     // 群聊带主语宾语的格式（优先匹配）
