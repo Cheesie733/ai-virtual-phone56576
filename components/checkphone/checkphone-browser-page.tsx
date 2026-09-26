@@ -273,22 +273,7 @@ export function CheckPhoneBrowserPage({ character, onBack }: CheckPhoneBrowserPa
                     </div>
                   </div>
 
-                  {(selectedItem.context || selectedItem.innerThought) && (
-                    <div className="mx-4 p-3 bg-blue-50/50 border border-blue-100/40 rounded-xl mb-3 flex flex-col gap-2">
-                      {selectedItem.context && (
-                        <div className="text-xs text-blue-600/80 leading-relaxed">
-                          <span className="font-bold mr-1">情境:</span>
-                          <CheckPhoneBilingualText text={selectedItem.context} tone="browser" />
-                        </div>
-                      )}
-                      {selectedItem.innerThought && (
-                        <div className="text-xs text-blue-600/80 leading-relaxed">
-                          <span className="font-bold mr-1">内心想法:</span>
-                          <CheckPhoneBilingualText text={selectedItem.innerThought} tone="browser" />
-                        </div>
-                      )}
-                    </div>
-                  )}
+
 
                   <div className="bg-white border-y border-black/[0.04]">
                     <div className="px-5 py-3.5 border-b border-black/[0.03] flex items-center justify-between">
