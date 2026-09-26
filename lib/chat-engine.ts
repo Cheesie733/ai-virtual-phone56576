@@ -1828,8 +1828,15 @@ export async function buildChatPromptMessages(
     const memConfig = loadMemoryConfig();
     const isOfflineMode = options?.appTags?.includes("offline") === true;
     const effectiveAppTags = mergeAppTags(options?.appTags, promptProfile?.appTags, resolvedAppId);
-    const toolsAllowed = options?.toolsAllowed !== false && !isOfflineMode;
-    const enabledTools = toolsAllowed ? getEnabledTools(resolvedAppId) : [];
+    const toolsAllowed = options?.toolsAllowed !== false;
+    let enabledTools = toolsAllowed ? getEnabledTools(resolvedAppId) : [];
+    if (isOfflineMode) {
+        enabledTools = enabledTools.filter(tool => {
+            const isLookupWorkflow = tool.source === "composite" && tool.sourceId?.startsWith("builtin_phone_lookup_");
+            const isWorkflowPackage = tool.source === "composite_package" && tool.sourceId === "builtin_phone_lookup_workflows";
+            return isLookupWorkflow || isWorkflowPackage;
+        });
+    }
     const toolsEnabled = enabledTools.length > 0
         && (options?.forceEnableTools === true || presetIncludesToolsMacro(preset, resolvedAppId, effectiveAppTags));
     const usesNativeActions = Boolean(toolsEnabled && nativeToolProtocolForConfig(config));
